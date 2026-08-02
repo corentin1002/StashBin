@@ -8,6 +8,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ### Ajouté
 
+- Licence MIT.
 - Chiffrement de bout en bout dans le navigateur : AES-256-GCM avec clé dérivée par PBKDF2-SHA256 (310 000 itérations) ; la clé voyage dans le fragment `#` de l'URL et n'atteint jamais le serveur.
 - Création de secrets réservée aux utilisateurs authentifiés (sessions PHP, protection CSRF).
 - Lecture publique par lien, avec mot de passe optionnel mélangé à la dérivation de clé.

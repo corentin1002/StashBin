@@ -152,3 +152,7 @@ data/               base SQLite (créée automatiquement)
 - Supprimer exige d'être connecté **et** de posséder le jeton remis au créateur.
 - Sessions `HttpOnly`/`SameSite`, jetons CSRF, CSP stricte, mots de passe hachés (`password_hash`).
 - Ce que le serveur peut faire s'il est compromis : supprimer des secrets, servir du JavaScript malveillant aux futurs visiteurs. C'est la même limite que PrivateBin — l'intégrité du serveur reste importante.
+
+## 📄 Licence
+
+Distribué sous licence [MIT](LICENSE).
