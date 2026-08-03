@@ -1,119 +1,121 @@
 # 🔐 StashBin
 
-> Partage de secrets chiffrés de bout en bout — la création est réservée aux utilisateurs autorisés (ou ouverte à tous, au choix), la lecture est ouverte à quiconque possède le lien.
+***English** · [Français](README.fr.md)*
 
-Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une différence clé : **seuls les comptes authentifiés peuvent créer des secrets**. Il ne s'agit pas d'un fork : le code est une réécriture complète et indépendante, sans aucune ligne reprise du projet d'origine. Aucun framework, aucune dépendance Composer — du PHP, SQLite et le WebCrypto du navigateur.
+> End-to-end encrypted secret sharing — creating a secret is restricted to authorised users (or open to everyone, your call), reading one only takes the link.
+
+Inspired by [PrivateBin](https://github.com/PrivateBin/PrivateBin), with one key difference: **only authenticated accounts can create secrets**. This is not a fork — the code is a complete, independent rewrite with no line taken from the original project. No framework, no Composer dependency: PHP, SQLite, and the browser's WebCrypto.
 
 ---
 
-## ✨ Fonctionnalités
+## ✨ Features
 
-- **Chiffrement de bout en bout** — le texte est chiffré dans le navigateur (AES-256-GCM) ; le serveur ne stocke que du chiffré et ne peut jamais lire les secrets.
-- **Création authentifiée** — comptes utilisateurs gérés en CLI ; sans compte, impossible de créer un secret. Désactivable d'une ligne (`'auth' => false`) pour une instance ouverte, quand l'accès est déjà restreint autrement.
-- **Lecture par lien** — la clé de déchiffrement voyage dans le fragment `#` de l'URL, jamais envoyé au serveur.
-- **Mot de passe optionnel** — mélangé à la clé lors de la dérivation (PBKDF2-SHA256, 310 000 itérations) ; sans lui, le lien seul ne suffit pas.
-- **Expiration** — de 1 heure à jamais, purge automatique.
-- **Destruction après lecture** — avec écran de confirmation avant de consommer le secret.
-- **Lien de suppression** — remis au créateur, utilisable uniquement par un utilisateur connecté.
-- **Interface multilingue** — français et anglais, choisis d'après la langue du navigateur ; ajouter une langue, c'est déposer un fichier dans `src/lang/`.
+- **End-to-end encryption** — the text is encrypted in the browser (AES-256-GCM); the server stores ciphertext only and can never read secrets.
+- **Authenticated creation** — accounts are managed from the CLI; without one, no secret can be created. Disabled by a single line (`'auth' => false`) for an open instance, when access is already restricted some other way.
+- **Read by link** — the decryption key travels in the URL's `#` fragment, which is never sent to the server.
+- **Optional password** — mixed into key derivation (PBKDF2-SHA256, 310,000 iterations); with it, the link alone is not enough.
+- **Expiry** — from 1 hour to never, with automatic purging.
+- **Burn after reading** — with a confirmation screen before the secret is consumed.
+- **Deletion link** — handed to the creator, usable only by a signed-in user.
+- **Multilingual interface** — English and French, chosen from the browser's language; adding a language means dropping a file into `src/lang/`.
 
-## 🔍 Comment ça marche
+## 🔍 How it works
 
 ```
-┌─ Navigateur (créateur) ─────────────┐         ┌─ Serveur ────────────────┐
-│ clé aléatoire K (256 bits)          │         │                          │
-│ + mot de passe optionnel            │  POST   │ stocke le chiffré,       │
-│ → PBKDF2 → AES-256-GCM → chiffré ───┼────────▶│ ne voit jamais K ni le   │
-│                                     │         │ mot de passe             │
-│ lien = view.php?id=xxx#K            │         └──────────────────────────┘
+┌─ Browser (creator) ─────────────────┐         ┌─ Server ─────────────────┐
+│ random key K (256 bits)             │         │                          │
+│ + optional password                 │  POST   │ stores the ciphertext,   │
+│ → PBKDF2 → AES-256-GCM → ciphertext ┼────────▶│ never sees K nor the     │
+│                                     │         │ password                 │
+│ link = view.php?id=xxx#K            │         └──────────────────────────┘
 └─────────────────────────────────────┘
-                                                ┌─ Navigateur (lecteur) ───┐
-   Le fragment #K n'est jamais transmis         │ lit K dans l'URL,        │
-   au serveur : il reste dans le navigateur.    │ déchiffre localement     │
+                                                ┌─ Browser (reader) ───────┐
+   The #K fragment is never transmitted to      │ reads K from the URL,    │
+   the server: it stays in the browser.         │ decrypts locally         │
                                                 └──────────────────────────┘
 ```
 
-| Étape | Détail |
+| Step | Detail |
 |---|---|
-| Chiffrement | AES-256-GCM, IV 96 bits aléatoire |
-| Dérivation de clé | PBKDF2-SHA256, 310 000 itérations, sel 128 bits |
-| Clé d'URL | 256 bits aléatoires, encodés base64url dans le fragment `#` |
-| Stockage | SQLite : payload chiffré + métadonnées (expiration, burn) |
+| Encryption | AES-256-GCM, random 96-bit IV |
+| Key derivation | PBKDF2-SHA256, 310,000 iterations, 128-bit salt |
+| URL key | 256 random bits, base64url-encoded in the `#` fragment |
+| Storage | SQLite: encrypted payload + metadata (expiry, burn) |
 
-## 🚀 Démarrage rapide
+## 🚀 Quick start
 
-### Avec Podman (recommandé pour tester)
+### With Podman (recommended for trying it out)
 
 ```bash
 ./containers/stashbin.sh up          # PHP 8.4 + Apache
-./containers/stashbin.sh user alice  # créer un compte
+./containers/stashbin.sh user alice  # create an account
 ```
 
 → **http://127.0.0.1:8081**
 
-Le code est monté depuis le projet : toute modification est visible immédiatement, sans rebuild. La base SQLite vit dans un volume, hors du code.
+The code is mounted from the project: any change shows up immediately, with no rebuild. The SQLite database lives in a volume, outside the code.
 
 ```bash
-./containers/stashbin.sh up 8.5 nginx  # autre version, autre serveur
-./containers/stashbin.sh down          # arrêter
-./containers/stashbin.sh reset         # repartir de zéro
-./containers/stashbin.sh clean         # tout retirer une fois terminé
+./containers/stashbin.sh up 8.5 nginx  # another version, another server
+./containers/stashbin.sh down          # stop
+./containers/stashbin.sh reset         # start over
+./containers/stashbin.sh clean         # remove everything once you are done
 ```
 
-`./containers/stashbin.sh test` rejoue le parcours complet — connexion, création, relecture, destruction après lecture — sur les huit combinaisons de version et de serveur. Voir [`containers/README.md`](containers/README.md).
+`./containers/stashbin.sh test` replays the full journey — sign in, create, read back, burn after reading — across all eight combinations of version and server. See [`containers/README.md`](containers/README.md).
 
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 179 tests, quelques minutes
-./tests/run.sh --help   # options : version, serveur, matrice complète…
+./tests/run.sh          # 183 tests, a few minutes
+./tests/run.sh --help   # options: version, server, full matrix…
 ```
 
-Le lanceur démarre une instance neuve, joue les cinq suites et détruit tout : rien à préparer, rien à nettoyer. Le code de sortie vaut `0` si et seulement si tout passe.
+The runner starts a fresh instance, plays the five suites and tears everything down: nothing to set up, nothing to clean. The exit code is `0` if and only if everything passes.
 
-| Suite | Tests | Portée |
+| Suite | Tests | Scope |
 |---|--:|---|
-| Unitaire | 30 | Fonctions de `src/bootstrap.php` : échappement, configuration, surcharges d'environnement, schéma, purge, CSRF |
-| API | 39 | Règles métier via HTTP : authentification, validation, durées de vie, destruction après lecture, suppression |
-| Sécurité | 22 | Rien hors de `public/`, en-têtes, fixation de session, stockage haché, injections |
-| Instance ouverte | 19 | Second conteneur sans authentification : création libre, CSRF toujours exigée, garanties inchangées |
-| Navigateur | 30 | Chromium réel : cryptographie de bout en bout et parcours d'interface |
+| Unit | 56 | Functions in `src/bootstrap.php`: escaping, configuration, environment overrides, schema, purging, CSRF, language |
+| API | 44 | Business rules over HTTP: authentication, validation, lifetimes, burn after reading, deletion, error codes |
+| Security | 28 | Nothing outside `public/`, headers, session fixation, hashed storage, injection, language selection |
+| Open instance | 19 | A second container without authentication: free creation, CSRF still required, guarantees unchanged |
+| Browser | 36 | Real Chromium: end-to-end cryptography, interface journeys, language served |
 
-Les tests navigateur exercent la partie que rien d'autre ne couvre — `deriveKey`, `encryptText`, `decryptPayload` — et vérifient qu'un chiffré altéré d'un seul bit est rejeté. L'ensemble a été éprouvé par mutation : douze régressions introduites volontairement dans le code, douze détectées. Voir [`tests/README.md`](tests/README.md).
+The browser tests exercise the part nothing else covers — `deriveKey`, `encryptText`, `decryptPayload` — and check that a ciphertext altered by a single bit is rejected. The whole set has been validated by mutation: eighteen regressions deliberately introduced into the code, eighteen caught. See [`tests/README.md`](tests/README.md).
 
-### Avec PHP seul
+### With PHP alone
 
-Prérequis : PHP ≥ 8.1 avec `pdo_sqlite` (`php-cli` + `php-pdo` sur Fedora, `php-cli` + `php-sqlite3` sur Debian/Ubuntu). Aucune dépendance Composer.
+Requirements: PHP ≥ 8.1 with `pdo_sqlite` (`php-cli` + `php-pdo` on Fedora, `php-cli` + `php-sqlite3` on Debian/Ubuntu). No Composer dependency.
 
 ```bash
-php bin/user.php add alice          # créer un compte autorisé
-php -S localhost:8080 -t public     # serveur de développement
+php bin/user.php add alice          # create an authorised account
+php -S localhost:8080 -t public     # development server
 ```
 
-## ✅ Compatibilité
+## ✅ Compatibility
 
-Vérifiée par exécution du parcours applicatif complet, sans aucune dépréciation ni avertissement :
+Verified by running the full application journey, with no deprecation and no warning:
 
 | PHP | 8.1 | 8.2 | 8.3 | 8.4 | 8.5 | 8.6 |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|
 | Compatible | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-Sous **Apache + mod_php** comme sous **nginx + PHP-FPM** (testé de 8.3 à 8.6 pour les deux serveurs). PHP 8.6 est testé en *release candidate*, sa version finale étant attendue le 19 novembre 2026.
+Under **Apache + mod_php** as well as **nginx + PHP-FPM** (tested from 8.3 to 8.6 on both servers). PHP 8.6 is tested as a *release candidate*, its final version being expected on 19 November 2026.
 
-PHP 8.3 n'est plus en support actif depuis le 31 décembre 2025 (correctifs de sécurité jusqu'au 31 décembre 2027) : **8.4 est le choix recommandé**, avec un support sécurité jusqu'au 31 décembre 2028.
+PHP 8.3 left active support on 31 December 2025 (security fixes until 31 December 2027): **8.4 is the recommended choice**, with security support until 31 December 2028.
 
-Un détail à connaître en montant depuis PHP 8.3 : à partir de 8.4, le coût bcrypt par défaut de `password_hash()` passe de 10 à 12. Les comptes existants continuent de fonctionner sans intervention, mais conservent l'ancien coût tant que leur mot de passe n'est pas changé.
+One detail worth knowing when moving up from PHP 8.3: from 8.4 onwards, the default bcrypt cost of `password_hash()` goes from 10 to 12. Existing accounts keep working without intervention, but retain the old cost until their password is changed.
 
-## 📦 Déploiement en production
+## 📦 Production deployment
 
-> **⚠️ Deux règles impératives**
-> 1. Le document root doit pointer sur **`public/`**, jamais sur la racine du projet (sinon `config.php` et la base SQLite seraient exposés).
-> 2. Servez en **HTTPS** : la clé de déchiffrement transite dans l'URL côté client.
+> **⚠️ Two non-negotiable rules**
+> 1. The document root must point at **`public/`**, never at the project root (otherwise `config.php` and the SQLite database would be exposed).
+> 2. Serve over **HTTPS**: the decryption key travels in the URL on the client side.
 
-Le dossier `data/` doit être accessible en écriture par l'utilisateur PHP (`www-data`, `apache`…).
+The `data/` directory must be writable by the PHP user (`www-data`, `apache`…).
 
 <details>
-<summary><strong>Exemple Apache</strong></summary>
+<summary><strong>Apache example</strong></summary>
 
 ```apache
 <VirtualHost *:443>
@@ -122,13 +124,13 @@ Le dossier `data/` doit être accessible en écriture par l'utilisateur PHP (`ww
     <Directory /var/www/StashBin/public>
         Require all granted
     </Directory>
-    # + configuration SSL
+    # + SSL configuration
 </VirtualHost>
 ```
 </details>
 
 <details>
-<summary><strong>Exemple nginx</strong></summary>
+<summary><strong>nginx example</strong></summary>
 
 ```nginx
 server {
@@ -137,10 +139,10 @@ server {
     root /var/www/StashBin/public;
     index index.php;
 
-    # Impératif : nginx limite les corps de requête à 1 Mio par défaut et
-    # renvoie un 413 au-delà. Sans cette ligne, tout secret dépassant 1 Mio
-    # serait rejeté avant d'atteindre PHP, alors que config.php en autorise
-    # 2 Mio. Gardez cette valeur au-dessus de `max_size`.
+    # Required: nginx caps request bodies at 1 MiB by default and returns a
+    # 413 beyond that. Without this line, any secret over 1 MiB would be
+    # rejected before reaching PHP, even though config.php allows 2 MiB.
+    # Keep this value above `max_size`.
     client_max_body_size 8m;
 
     location / {
@@ -148,8 +150,8 @@ server {
     }
 
     location ~ \.php$ {
-        # try_files avant fastcgi_pass : sans lui, une URL de la forme
-        # /inexistant/x.php peut faire exécuter un autre fichier.
+        # try_files before fastcgi_pass: without it, a URL shaped like
+        # /nonexistent/x.php can cause another file to be executed.
         try_files $uri =404;
         include fastcgi_params;
         fastcgi_pass unix:/run/php/php-fpm.sock;
@@ -159,16 +161,16 @@ server {
 ```
 </details>
 
-## 👥 Gestion des utilisateurs
+## 👥 User management
 
 ```bash
-php bin/user.php add <nom>      # créer un compte
-php bin/user.php passwd <nom>   # changer le mot de passe
-php bin/user.php del <nom>      # révoquer
-php bin/user.php list           # lister
+php bin/user.php add <name>      # create an account
+php bin/user.php passwd <name>   # change the password
+php bin/user.php del <name>      # revoke
+php bin/user.php list            # list
 ```
 
-En conteneur, les mêmes sous-commandes passent par le script du banc d'essai, qui les exécute sous l'identité `www-data` :
+In a container, the same subcommands go through the test-bench script, which runs them as `www-data`:
 
 ```bash
 ./containers/stashbin.sh user add alice
@@ -177,111 +179,111 @@ En conteneur, les mêmes sous-commandes passent par le script du banc d'essai, q
 ./containers/stashbin.sh user list
 ```
 
-> L'identité compte : un compte créé en `root` rend la base inaccessible en écriture au serveur web, et la panne n'apparaît qu'au moment de créer un secret — pas à la connexion.
+> Identity matters: an account created as `root` leaves the database unwritable by the web server, and the failure only shows up when creating a secret — not when signing in.
 
 ## ⚙️ Configuration
 
-Tout se passe dans `config.php`, qui ne contient que des valeurs littérales : écrivez celle que vous voulez, il n'y a rien d'autre à faire.
+Everything happens in `config.php`, which holds nothing but literal values: write the one you want, there is nothing else to do.
 
-| Réglage | Défaut | Effet |
+| Setting | Default | Effect |
 |---|---|---|
-| `db` | `data/stashbin.sqlite` | Chemin de la base SQLite |
-| `auth` | `true` | Authentification exigée pour créer et supprimer |
-| `max_size` | 2 Mio | Taille maximale du payload chiffré |
-| `expirations` / `default_expiration` | 1 h → jamais, `1w` | Durées de vie proposées |
-| `default_locale` | `en` | Langue servie quand celle du navigateur n'est pas traduite |
-| `session_name` | `stashbin` | Nom du cookie de session |
+| `db` | `data/stashbin.sqlite` | Path to the SQLite database |
+| `auth` | `true` | Authentication required to create and delete |
+| `max_size` | 2 MiB | Maximum size of the encrypted payload |
+| `expirations` / `default_expiration` | 1 h → never, `1w` | Lifetimes on offer |
+| `default_locale` | `en` | Language served when the browser's is not translated |
+| `session_name` | `stashbin` | Name of the session cookie |
 
-Trois d'entre eux acceptent en plus une variable d'environnement, indispensable en conteneur où le fichier est monté en lecture seule : `STASHBIN_DB` pour le chemin de la base, `STASHBIN_AUTH` pour l'authentification, `STASHBIN_LOCALE` pour la langue de repli. La variable l'emporte sur le fichier quand elle est définie et non vide ; absente, elle ne change rien.
+Three of them also accept an environment variable, which is indispensable in a container where the file is mounted read-only: `STASHBIN_DB` for the database path, `STASHBIN_AUTH` for authentication, `STASHBIN_LOCALE` for the fallback language. The variable wins over the file when it is set and non-empty; absent, it changes nothing.
 
-### Langue de l'interface
+### Interface language
 
-L'interface est servie dans la langue du visiteur, déduite de l'en-tête `Accept-Language` qu'envoie son navigateur. Une étiquette régionale retombe sur sa langue — `fr-CA` est servi en `fr`.
+The interface is served in the visitor's language, deduced from the `Accept-Language` header their browser sends. A regional tag falls back to its language — `fr-CA` is served as `fr`.
 
-**Quand aucune des langues demandées n'est traduite, c'est l'anglais qui est servi** (`default_locale`), comme plus largement lu que le français. Un visiteur germanophone ou hispanophone obtient donc l'interface anglaise, jamais une page à moitié traduite.
+**When none of the requested languages is translated, English is served** (`default_locale`), as the more widely read of the two. A German- or Spanish-speaking visitor therefore gets the English interface, never a half-translated page.
 
-Le paramètre `?lang=` force la langue d'une page, quel que soit le navigateur :
+The `?lang=` parameter forces the language of a page, whatever the browser says:
 
 ```
-https://exemple.org/index.php?lang=en
+https://example.org/index.php?lang=fr
 ```
 
-Ce choix est sans état : ni cookie ni session ne le mémorisent, il est simplement reconduit sur les liens que l'application fabrique elle-même.
+That choice is stateless: neither a cookie nor a session remembers it, it is simply carried over onto the links the application builds itself.
 
-**Ajouter une langue** — déposez un fichier dans `src/lang/`, nommé d'après son étiquette (`de.php`, `pt-br.php`), qui retourne le même tableau de clés que `src/lang/fr.php`. Rien d'autre : le code découvre les langues offertes en listant ce dossier. Une traduction incomplète est acceptée, les clés manquantes étant empruntées à une autre langue plutôt qu'affichées sous forme d'identifiants.
+**Adding a language** — drop a file into `src/lang/`, named after its tag (`de.php`, `pt-br.php`), returning the same array of keys as `src/lang/fr.php`. Nothing else: the code discovers the languages on offer by listing that directory. An incomplete translation is accepted, missing keys being borrowed from another language rather than shown as identifiers.
 
-Deux rôles à ne pas confondre :
+Two roles not to be confused:
 
-- **`default_locale` (`en`) est la langue *servie*** quand la négociation ne trouve rien.
-- **`src/lang/fr.php` est la langue de *référence*** : c'est de lui qu'une traduction partielle emprunte ses chaînes manquantes. StashBin est écrit en français, ses chaînes y naissent, et les autres langues les traduisent. Toute clé employée dans le code doit donc y figurer.
+- **`default_locale` (`en`) is the language *served*** when negotiation finds nothing.
+- **`src/lang/fr.php` is the *reference* language**: it is the one a partial translation borrows its missing strings from. StashBin is written in French, its strings are born there, and other languages translate them. Every key used in the code must therefore appear in it.
 
-Un test unitaire vérifie que chaque langue offerte traduit intégralement la référence et que ses marqueurs `{ainsi}` correspondent.
+A unit test checks that every language on offer translates the reference in full, and that its `{placeholders}` match.
 
-### Instance ouverte, sans authentification
+### Open instance, without authentication
 
 ```php
-'auth' => false,        // dans config.php
+'auth' => false,        // in config.php
 ```
 
 ```bash
-STASHBIN_AUTH=0 …                     # ou par l'environnement
-AUTH=0 ./containers/stashbin.sh up    # ou sur le banc d'essai
+STASHBIN_AUTH=0 …                     # or through the environment
+AUTH=0 ./containers/stashbin.sh up    # or on the test bench
 ```
 
-La création et la suppression deviennent alors accessibles à tout visiteur : plus de comptes, plus de page de connexion, `login.php` renvoie vers la page de création et le lien de suppression n'exige plus que son jeton.
+Creation and deletion then become available to any visitor: no more accounts, no more sign-in page, `login.php` redirects to the creation page, and the deletion link requires nothing but its token.
 
-> **⚠️ Ne le faites que si l'accès à l'instance est déjà restreint autrement** — réseau interne, VPN, proxy authentifiant. Sur l'Internet public, c'est un dépôt de secrets ouvert à l'écriture par n'importe qui.
+> **⚠️ Only do this if access to the instance is already restricted some other way** — internal network, VPN, authenticating proxy. On the public Internet, this is a secret store open to writing by anyone.
 
-Tout le reste est inchangé : le chiffrement se fait toujours dans le navigateur, le serveur ne lit toujours rien, le jeton de suppression reste stocké haché, la protection CSRF et les en-têtes de durcissement restent en place. Ces garanties sont vérifiées séparément sur une instance ouverte par la suite `tests/noauth.test.php`.
+Everything else is unchanged: encryption still happens in the browser, the server still reads nothing, the deletion token is still stored hashed, and CSRF protection and hardening headers stay in place. Those guarantees are verified separately against an open instance by the `tests/noauth.test.php` suite.
 
 ## 🗂 Structure
 
 ```
-config.php          réglages (authentification, expirations, taille max,
-                    chemin de la base)
-containers/         banc d'essai multi-versions (voir containers/README.md)
-├── stashbin.sh     pilote unique : up, user, logs, down, reset, clean,
+config.php          settings (authentication, expiries, max size,
+                    database path, fallback language)
+containers/         multi-version test bench (see containers/README.md)
+├── stashbin.sh     single driver: up, user, logs, down, reset, clean,
 │                   list, test
 ├── Containerfile.apache    Apache + mod_php
 ├── Containerfile.nginx     nginx + PHP-FPM
-├── nginx.conf              configuration du serveur nginx
-└── *-entrypoint.sh         démarrage des deux piles
-public/             document root : pages, API, assets
-├── index.php       création de secret (authentifié)
-├── view.php        lecture publique
-├── api.php         API JSON (création, lecture, suppression)
-├── login.php       connexion
-└── assets/         chiffrement WebCrypto + styles
-tests/              jeu de test complet (voir son README)
-├── run.sh          lanceur unique : construit, joue, nettoie
-├── unit.test.php   fonctions de src/bootstrap.php
-├── api.test.php    règles métier de l'API
-├── security.test.php  garanties de sécurité
-├── noauth.test.php    comportement de l'instance ouverte
-├── browser.test.mjs   cryptographie et parcours, dans Chromium
-└── lib.php         assertions et client HTTP, sans dépendance
-src/bootstrap.php   base de données, sessions, CSRF, langue, helpers
-src/lang/           un fichier par langue offerte (fr.php fait référence)
-bin/user.php        gestion des comptes en CLI
-data/               base SQLite (créée automatiquement)
-└── .htaccess       « Require all denied » : garde-fou si le document root
-                    est mal configuré et pointe sur la racine du projet
+├── nginx.conf              nginx server configuration
+└── *-entrypoint.sh         startup for both stacks
+public/             document root: pages, API, assets
+├── index.php       secret creation (authenticated)
+├── view.php        public reading
+├── api.php         JSON API (create, read, delete)
+├── login.php       sign-in
+└── assets/         WebCrypto encryption + styles
+tests/              full test set (see its README)
+├── run.sh          single runner: builds, plays, cleans up
+├── unit.test.php   functions in src/bootstrap.php
+├── api.test.php    business rules of the API
+├── security.test.php  security guarantees
+├── noauth.test.php    behaviour of the open instance
+├── browser.test.mjs   cryptography and journeys, in Chromium
+└── lib.php         assertions and HTTP client, dependency-free
+src/bootstrap.php   database, sessions, CSRF, language, helpers
+src/lang/           one file per language on offer (fr.php is the reference)
+bin/user.php        account management from the CLI
+data/               SQLite database (created automatically)
+└── .htaccess       "Require all denied": a guard rail in case the document
+                    root is misconfigured and points at the project root
 ```
 
-## 🛡 Modèle de sécurité
+## 🛡 Security model
 
-- Le serveur ne voit **jamais** le contenu en clair, la clé, ni le mot de passe optionnel.
-- Créer un secret exige un compte ; lire n'exige que le lien (+ mot de passe éventuel).
-- Supprimer exige d'être connecté **et** de posséder le jeton remis au créateur.
-- Ces deux dernières règles tombent — et seulement elles — si l'exploitant met `'auth' => false` : c'est un choix explicite, jamais le défaut livré.
-- Sessions `HttpOnly`/`SameSite`, jetons CSRF, CSP stricte, mots de passe hachés (`password_hash`).
-- Ce que le serveur peut faire s'il est compromis : supprimer des secrets, servir du JavaScript malveillant aux futurs visiteurs. C'est la même limite que PrivateBin — l'intégrité du serveur reste importante.
+- The server **never** sees the plaintext, the key, or the optional password.
+- Creating a secret requires an account; reading one only requires the link (plus the password, if any).
+- Deleting requires being signed in **and** holding the token handed to the creator.
+- Those last two rules — and only those — fall away if the operator sets `'auth' => false`: an explicit choice, never the shipped default.
+- `HttpOnly`/`SameSite` sessions, CSRF tokens, a strict CSP, hashed passwords (`password_hash`).
+- What a compromised server can do: delete secrets, serve malicious JavaScript to future visitors. This is the same limit as PrivateBin — server integrity still matters.
 
 ## 📄 Licence
 
-Distribué sous licence [MIT](LICENSE).
+Distributed under the [MIT](LICENSE) licence.
 
-StashBin est une implémentation indépendante, écrite à partir de zéro. Le projet
-[PrivateBin](https://github.com/PrivateBin/PrivateBin) (licence zlib/libpng) en a
-inspiré le concept et le modèle de sécurité, mais aucun code n'en est issu : la
-mention ci-dessus est un remerciement, pas une obligation de licence.
+StashBin is an independent implementation, written from scratch. The
+[PrivateBin](https://github.com/PrivateBin/PrivateBin) project (zlib/libpng licence)
+inspired its concept and security model, but no code comes from it: the mention
+above is an acknowledgement, not a licence obligation.

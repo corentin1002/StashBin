@@ -21,11 +21,11 @@ Le lanceur construit l'image, démarre une instance neuve, crée un compte de te
 
 ## Ce qui est couvert
 
-**179 tests** répartis en cinq suites.
+**183 tests** répartis en cinq suites.
 
 | Suite | Tests | Portée |
 |---|--:|---|
-| `unit.test.php` | 53 | Fonctions de `src/bootstrap.php` sans passer par HTTP : échappement, configuration et surcharges d'environnement, schéma de base, purge des expirés, jetons CSRF, négociation de la langue et dictionnaires |
+| `unit.test.php` | 56 | Fonctions de `src/bootstrap.php` sans passer par HTTP : échappement, configuration et surcharges d'environnement, schéma de base, purge des expirés, jetons CSRF, négociation de la langue et dictionnaires |
 | `api.test.php` | 44 | Règles métier via HTTP : authentification, CSRF, validation du payload, durées de vie, destruction après lecture, liens de suppression, méthodes refusées, codes d'erreur et langue de la réponse |
 | `security.test.php` | 28 | Garanties annoncées par le README : rien hors de `public/`, en-têtes de durcissement, session et fixation, stockage haché, injections, et le fait que le choix de la langue n'ouvre rien |
 | `noauth.test.php` | 19 | Instance ouverte (`auth` à false) : création sans compte, CSRF toujours exigée, suppression par le seul jeton, et tout ce qui ne bouge pas |

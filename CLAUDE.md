@@ -16,7 +16,7 @@ Ce sont les promesses du produit. Une modification qui en casse une est un bug, 
 ## Commandes
 
 ```bash
-./tests/run.sh                    # 179 tests, quelques minutes — à lancer avant de valider
+./tests/run.sh                    # 183 tests, quelques minutes — à lancer avant de valider
 ./tests/run.sh --no-browser       # sans Chromium, plus rapide pendant l'itération
 ./tests/run.sh --matrix           # suites PHP sur les huit combinaisons version × serveur
 
@@ -33,6 +33,7 @@ AUTH=0 ./containers/stashbin.sh up  # instance ouverte, sans authentification
 ## Conventions
 
 - **Commentaires, descriptions de test, messages de commit et CHANGELOG : en français.** Identifiants du code (fonctions, variables, colonnes) : en anglais. Cette séparation est constante dans tout le dépôt.
+- **`README.md` est en anglais, `README.fr.md` en français, et l'anglais fait foi.** Toute modification de l'un vient avec sa traduction dans l'autre, dans le même commit — un test de `tests/unit.test.php` compare la structure des sections et le nombre de tests annoncé, et échoue si un seul des deux a bougé. Les autres `.md` restent monolingues : les dupliquer, c'est garantir qu'ils divergent.
 - **Aucun texte d'interface en dur.** Toute chaîne vue par un visiteur passe par `t()` et vit dans `src/lang/`. `src/lang/fr.php` fait référence : une clé qui n'y figure pas n'a pas de repli. Ne le confondez pas avec `default_locale`, qui vaut `en` et désigne la langue *servie* quand la négociation ne trouve rien. Les commentaires des fichiers de langue restent en français, y compris dans `en.php`.
 - Un commentaire explique une contrainte que le code ne peut pas montrer. Pas de commentaire qui paraphrase la ligne suivante, ni qui s'adresse au relecteur d'une pull request.
 - `declare(strict_types=1);` en tête de tout fichier PHP contenant du code exécutable. `config.php`, qui ne fait que retourner un tableau, en est exempt.

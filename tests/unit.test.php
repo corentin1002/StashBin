@@ -408,4 +408,65 @@ test('les chaînes publiées au JavaScript sont du JSON sans le préfixe « js. 
     assert_true(!isset($published['error.not_found']), 'seules les clés « js. » sont publiées');
 });
 
+// ---------------------------------------------------------------------------
+group('Documentation — README bilingue');
+
+// Deux README finissent toujours par diverger si rien ne les surveille. Ce que
+// l'on peut vérifier mécaniquement, c'est la structure : une section ajoutée
+// d'un côté et pas de l'autre est le cas réel, et il est attrapé ici. Le
+// contenu, lui, reste à la charge du relecteur.
+function readme_headings(string $file): array
+{
+    $headings = [];
+    $inFence = false;
+    foreach (file($file, FILE_IGNORE_NEW_LINES) as $line) {
+        // Les lignes d'un bloc de code peuvent commencer par « # » sans être
+        // des titres : les commentaires shell des exemples en sont pleins.
+        if (str_starts_with($line, '```')) {
+            $inFence = !$inFence;
+            continue;
+        }
+        if ($inFence || !preg_match('/^(#{1,6})\s+(.*)$/', $line, $m)) {
+            continue;
+        }
+        // Le niveau et l'emoji identifient la section sans dépendre de la
+        // langue : c'est justement le titre qui est traduit.
+        preg_match('/^([^\p{L}\p{N}]*)/u', trim($m[2]), $icon);
+        $headings[] = strlen($m[1]) . ':' . trim($icon[1]);
+    }
+    return $headings;
+}
+
+test('les deux README existent et se renvoient l\'un à l\'autre', function () {
+    $root = dirname(__DIR__);
+    assert_true(is_file("$root/README.md"), 'README.md (anglais) présent');
+    assert_true(is_file("$root/README.fr.md"), 'README.fr.md (français) présent');
+    assert_contains('README.fr.md', file_get_contents("$root/README.md"), 'l\'anglais renvoie au français');
+    assert_contains('README.md', file_get_contents("$root/README.fr.md"), 'le français renvoie à l\'anglais');
+});
+
+test('les deux README ont la même structure de sections', function () {
+    $root = dirname(__DIR__);
+    $en = readme_headings("$root/README.md");
+    $fr = readme_headings("$root/README.fr.md");
+    assert_true($en !== [], 'des titres ont bien été trouvés');
+    assert_eq(
+        $fr,
+        $en,
+        "structure divergente entre README.md et README.fr.md\n"
+        . "(niveau:emoji, dans l'ordre — une section a été ajoutée, retirée ou déplacée d'un seul côté)"
+    );
+});
+
+test('les deux README annoncent le même nombre de tests', function () {
+    // Un chiffre mis à jour d'un seul côté est la dérive la plus facile à
+    // commettre, et la plus visible pour un lecteur.
+    $root = dirname(__DIR__);
+    $count = static function (string $file): array {
+        preg_match_all('/(\d+)\s+tests/', file_get_contents($file), $m);
+        return array_unique($m[1]);
+    };
+    assert_eq($count("$root/README.fr.md"), $count("$root/README.md"), 'mêmes comptes annoncés');
+});
+
 exit(summary('Tests unitaires'));
