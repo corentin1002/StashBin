@@ -21,6 +21,14 @@ Ensuite, un compte est nécessaire pour créer des secrets :
 
 → **http://127.0.0.1:8081**
 
+Pour éprouver l'instance ouverte, celle qui ne demande pas de compte :
+
+```bash
+AUTH=0 ./containers/stashbin.sh up
+```
+
+Le script pose `STASHBIN_AUTH=0` dans le conteneur, ce qui surcharge le `'auth' => true` de `config.php` sans y toucher — le dépôt est monté en lecture seule.
+
 ## Les six commandes
 
 | Commande | Effet |
@@ -78,6 +86,8 @@ Pour chaque combinaison, le script construit l'image, démarre la pile et rejoue
 PORT=8082 ./containers/stashbin.sh up
 TEST_PORT=9099 ./containers/stashbin.sh test
 ```
+
+**`AUTH`.** `AUTH=0 ./containers/stashbin.sh up` démarre une instance sans authentification (défaut : `1`). La variable ne concerne que `up` : `test` force l'authentification, puisque le parcours qu'il rejoue commence par une connexion.
 
 **PHP 8.6 n'est pas sorti** (finale prévue le 19 novembre 2026) : `up 8.6` utilise l'image `php:8.6-rc`. Le script fait la traduction, il n'y a rien à ajuster.
 

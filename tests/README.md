@@ -6,7 +6,7 @@ Une commande, un code de sortie : `0` si tout passe, `1` si quoi que ce soit éc
 ./tests/run.sh
 ```
 
-Le lanceur construit l'image, démarre une instance neuve, crée un compte de test, joue les quatre suites, affiche un bilan et détruit tout. Il n'y a rien à préparer et rien à nettoyer après.
+Le lanceur construit l'image, démarre une instance neuve, crée un compte de test, joue les cinq suites, affiche un bilan et détruit tout. Il n'y a rien à préparer et rien à nettoyer après.
 
 ## Options
 
@@ -21,16 +21,19 @@ Le lanceur construit l'image, démarre une instance neuve, crée un compte de te
 
 ## Ce qui est couvert
 
-**114 tests** répartis en quatre suites.
+**140 tests** répartis en cinq suites.
 
 | Suite | Tests | Portée |
 |---|--:|---|
-| `unit.test.php` | 24 | Fonctions de `src/bootstrap.php` sans passer par HTTP : échappement, configuration, schéma de base, purge des expirés, jetons CSRF |
+| `unit.test.php` | 30 | Fonctions de `src/bootstrap.php` sans passer par HTTP : échappement, configuration et surcharges d'environnement, schéma de base, purge des expirés, jetons CSRF |
 | `api.test.php` | 39 | Règles métier via HTTP : authentification, CSRF, validation du payload, durées de vie, destruction après lecture, liens de suppression, méthodes refusées |
-| `security.test.php` | 21 | Garanties annoncées par le README : rien hors de `public/`, en-têtes de durcissement, session et fixation, stockage haché, injections |
+| `security.test.php` | 22 | Garanties annoncées par le README : rien hors de `public/`, en-têtes de durcissement, session et fixation, stockage haché, injections |
+| `noauth.test.php` | 19 | Instance ouverte (`auth` à false) : création sans compte, CSRF toujours exigée, suppression par le seul jeton, et tout ce qui ne bouge pas |
 | `browser.test.mjs` | 30 | Chromium réel : cryptographie de bout en bout et parcours d'interface complets |
 
 Les tests PHP s'exécutent **dans le conteneur applicatif**, sous l'identité `www-data`. Ils peuvent donc confronter la réponse HTTP à ce qui est réellement écrit en base — c'est ainsi qu'on vérifie qu'un jeton de suppression est bien stocké haché, ou qu'un payload n'est jamais déchiffré côté serveur.
+
+`noauth.test.php` a besoin d'un serveur démarré avec `STASHBIN_AUTH=0` : le réglage est lu au démarrage, il n'y a pas de bascule à chaud. Le lanceur remplace donc l'instance le temps de cette suite, puis en redémarre une ordinaire pour les tests navigateur. En mode `--matrix`, la suite est rejouée sur les huit combinaisons : la surcharge par variable d'environnement passe par mod_php d'un côté et PHP-FPM de l'autre, ce qui n'est pas le même chemin.
 
 Les tests navigateur pilotent Chromium sur l'application réelle. Ils couvrent la partie que rien d'autre n'exerce : `deriveKey`, `encryptText` et `decryptPayload` de `public/assets/stashbin.js`, appelées directement dans la page, puis les parcours complets — création, relecture, mot de passe, destruction après lecture, lien de suppression.
 

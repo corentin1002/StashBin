@@ -50,7 +50,7 @@ group('Configuration — config()');
 
 test('expose les clés attendues', function () {
     $c = config();
-    foreach (['db', 'max_size', 'expirations', 'default_expiration', 'session_name'] as $k) {
+    foreach (['db', 'auth', 'max_size', 'expirations', 'default_expiration', 'session_name'] as $k) {
         assert_true(array_key_exists($k, $c), "clé « $k » présente");
     }
 });
@@ -78,6 +78,75 @@ test('la durée par défaut fait partie des durées proposées', function () {
 
 test('mémoïse : deux appels renvoient le même tableau', function () {
     assert_eq(config(), config(), 'configuration stable');
+});
+
+// ---------------------------------------------------------------------------
+group('Authentification facultative — auth_enabled()');
+
+test('exige l\'authentification tant que rien ne la désactive', function () {
+    assert_eq(true, config()['auth'], 'clé « auth » à true par défaut');
+    assert_true(auth_enabled(), 'auth_enabled() suit la configuration');
+});
+
+test('is_authorized() exige une session ouverte quand l\'authentification est active', function () {
+    assert_true(!is_authorized(), 'aucune session, donc aucun droit de créer');
+});
+
+// ---------------------------------------------------------------------------
+group('Surcharges d\'environnement — env_overrides()');
+
+// config.php ne contient que des valeurs littérales : c'est env_overrides()
+// qui décide si l'environnement l'emporte, et à quelles conditions.
+$base = ['db' => '/chemin/du/fichier.sqlite', 'auth' => true];
+
+test('STASHBIN_AUTH désactive l\'authentification sur une valeur négative', function () use ($base) {
+    try {
+        foreach (['0', 'false', 'off', 'no', 'FALSE', 'Off'] as $value) {
+            putenv("STASHBIN_AUTH=$value");
+            assert_eq(false, env_overrides($base)['auth'], "« $value » désactive l'authentification");
+        }
+    } finally {
+        putenv('STASHBIN_AUTH');
+    }
+});
+
+test('toute autre valeur de STASHBIN_AUTH laisse l\'authentification active', function () use ($base) {
+    // Le piège : « 0 » est falsy en PHP, donc un « ?: » sur la valeur du
+    // fichier ramènerait justement le cas à désactiver vers true.
+    try {
+        foreach (['1', 'true', 'on', 'oui', 'yes', 'peut-être'] as $value) {
+            putenv("STASHBIN_AUTH=$value");
+            assert_eq(true, env_overrides($base)['auth'], "« $value » laisse l'authentification active");
+        }
+    } finally {
+        putenv('STASHBIN_AUTH');
+    }
+});
+
+test('une variable absente ou vide ne surcharge rien', function () {
+    $file = ['db' => '/valeur/du/fichier.sqlite', 'auth' => false];
+    $saved = getenv('STASHBIN_DB');
+    try {
+        putenv('STASHBIN_DB');
+        putenv('STASHBIN_AUTH');
+        assert_eq($file, env_overrides($file), 'valeurs du fichier conservées');
+        putenv('STASHBIN_DB=');
+        putenv('STASHBIN_AUTH=');
+        assert_eq($file, env_overrides($file), 'une variable vide n\'écrase pas le fichier');
+    } finally {
+        putenv('STASHBIN_AUTH');
+        putenv(is_string($saved) ? "STASHBIN_DB=$saved" : 'STASHBIN_DB');
+    }
+});
+
+test('STASHBIN_DB remplace le chemin de la base', function () use ($base) {
+    $saved = getenv('STASHBIN_DB');
+    try {
+        putenv('STASHBIN_DB=/ailleurs/base.sqlite');
+        assert_eq('/ailleurs/base.sqlite', env_overrides($base)['db'], 'chemin surchargé');
+    } finally {
+        putenv(is_string($saved) ? "STASHBIN_DB=$saved" : 'STASHBIN_DB');
+    }
 });
 
 // ---------------------------------------------------------------------------

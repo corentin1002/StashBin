@@ -68,6 +68,12 @@ test('les en-têtes sont aussi posés sur l\'API', function () use ($http) {
 // ---------------------------------------------------------------------------
 group('Session et authentification');
 
+test('la configuration livrée exige l\'authentification', function () {
+    // L'ouverture est un choix explicite de l'exploitant : le dépôt ne doit
+    // jamais partir avec la création accessible à tous.
+    assert_eq(true, config()['auth'], 'clé « auth » à true dans config.php');
+});
+
 test('le cookie de session est HttpOnly et SameSite', function () use ($base) {
     $anon = new Http($base);
     $cookies = $anon->get('/login.php')->headerAll('Set-Cookie');

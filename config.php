@@ -1,9 +1,28 @@
 <?php
-// Configuration de StashBin.
+// Configuration de StashBin. Chaque réglage est une valeur littérale : pour
+// changer quoi que ce soit, écrivez la valeur voulue ici, rien d'autre.
+//
+// Deux réglages acceptent en plus une variable d'environnement, indispensable
+// en conteneur où ce fichier est monté en lecture seule :
+//
+//   STASHBIN_DB      chemin de la base SQLite
+//   STASHBIN_AUTH    « 0 », « false », « off » ou « no » désactivent
+//                    l'authentification ; toute autre valeur l'exige
+//
+// La variable l'emporte sur le fichier quand elle est définie et non vide.
+// Absente, elle ne change rien : c'est ce fichier qui décide.
 return [
     // Chemin de la base SQLite (le dossier doit être accessible en écriture par PHP).
-    // Surchargeable par la variable d'environnement STASHBIN_DB (utile en conteneur).
-    'db' => getenv('STASHBIN_DB') ?: __DIR__ . '/data/stashbin.sqlite',
+    'db' => __DIR__ . '/data/stashbin.sqlite',
+
+    // Authentification exigée pour créer et supprimer un secret. C'est le
+    // fonctionnement normal de StashBin.
+    //
+    // false ouvre la création à tout visiteur : à ne faire que sur une instance
+    // dont l'accès est déjà restreint autrement (réseau interne, proxy
+    // authentifiant). Tout le reste est inchangé — le chiffrement se fait
+    // toujours dans le navigateur et le serveur ne lit toujours rien.
+    'auth' => true,
 
     // Taille maximale du payload chiffré accepté (en octets).
     'max_size' => 2 * 1024 * 1024,

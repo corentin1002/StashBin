@@ -31,6 +31,12 @@ function prompt_password(string $label): string
 $command = $argv[1] ?? 'help';
 $username = $argv[2] ?? null;
 
+// Les comptes restent gérables sur une instance ouverte, mais ils n'y servent
+// à rien : le dire évite de chercher pourquoi la connexion n'est pas demandée.
+if (!auth_enabled() && in_array($command, ['add', 'passwd', 'del', 'list'], true)) {
+    fwrite(STDERR, "Note : l'authentification est désactivée (config « auth »), les comptes ne sont pas utilisés.\n");
+}
+
 switch ($command) {
     case 'add':
         if (!$username) {

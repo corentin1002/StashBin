@@ -5,8 +5,32 @@ function config(): array
 {
     static $config = null;
     if ($config === null) {
-        $config = require dirname(__DIR__) . '/config.php';
+        $config = env_overrides(require dirname(__DIR__) . '/config.php');
     }
+    return $config;
+}
+
+// Applique les surcharges d'environnement par-dessus config.php, qui ne
+// contient que des valeurs littérales. Une variable absente ou vide ne
+// surcharge rien : le fichier reste la référence.
+//
+// Fonction séparée, et non quelques lignes dans config(), parce que celle-ci
+// mémoïse : c'est le seul point où la lecture de l'environnement est
+// éprouvable sans relancer un processus.
+function env_overrides(array $config): array
+{
+    $db = getenv('STASHBIN_DB');
+    if (is_string($db) && $db !== '') {
+        $config['db'] = $db;
+    }
+
+    // Comparaison explicite plutôt qu'un « ?: » : « 0 » est falsy en PHP, et
+    // c'est justement la valeur qui doit désactiver l'authentification.
+    $auth = getenv('STASHBIN_AUTH');
+    if (is_string($auth) && $auth !== '') {
+        $config['auth'] = !in_array(strtolower($auth), ['0', 'false', 'off', 'no'], true);
+    }
+
     return $config;
 }
 
@@ -65,6 +89,11 @@ function start_session(): void
     session_start();
 }
 
+function auth_enabled(): bool
+{
+    return config()['auth'] === true;
+}
+
 function current_user(): ?array
 {
     start_session();
@@ -76,8 +105,21 @@ function current_user(): ?array
     return $stmt->fetch() ?: null;
 }
 
-function require_login(): array
+// Droit de créer et de supprimer un secret. L'authentification désactivée,
+// il n'y a plus de compte du tout : tout visiteur est autorisé.
+function is_authorized(): bool
 {
+    return !auth_enabled() || current_user() !== null;
+}
+
+// Renvoie null quand l'authentification est désactivée : il n'y a alors aucun
+// utilisateur à nommer, et l'appelant doit s'en accommoder plutôt que d'en
+// inventer un.
+function require_login(): ?array
+{
+    if (!auth_enabled()) {
+        return null;
+    }
     $user = current_user();
     if ($user === null) {
         header('Location: login.php');

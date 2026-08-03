@@ -16,6 +16,7 @@ TEST_NAME=stashbin-selftest  # instance éphémère utilisée par « test »
 TEST_VOLUME=stashbin-selftest-data
 IMAGE_PREFIX=stashbin        # images construites ici : stashbin:<version>-<serveur>
 PORT="${PORT:-8081}"
+AUTH="${AUTH:-1}"            # AUTH=0 : instance ouverte, sans authentification
 
 RED=$'\e[31m'; GREEN=$'\e[32m'; YELLOW=$'\e[33m'; BOLD=$'\e[1m'; OFF=$'\e[0m'
 info() { printf '%s\n' "$*"; }
@@ -60,13 +61,16 @@ build() {
 
 # Démarre un conteneur et attend qu'il réponde vraiment en HTTP.
 start() {
-    local image=$1 name=$2 port=$3 volume=$4
+    local image=$1 name=$2 port=$3 volume=$4 auth=${5:-1}
     podman rm -f "$name" >/dev/null 2>&1 || true
     podman run -d --name "$name" -p "127.0.0.1:$port:80" \
+        -e "STASHBIN_AUTH=$auth" \
         -v "$REPO:/var/www/stashbin:ro,z" \
         -v "$volume:/var/lib/stashbin:z" \
         "$image" >/dev/null
 
+    # login.php redirige (302) sur une instance ouverte : « curl -f » ne tient
+    # en échec que les codes 4xx et 5xx, la sonde reste donc valable.
     for _ in $(seq 40); do
         if curl -fsS -o /dev/null "http://127.0.0.1:$port/login.php" 2>/dev/null; then
             return 0
@@ -87,14 +91,17 @@ cmd_up() {
     fi
 
     local image; image=$(build "$version" "$server")
-    start "$image" "$NAME" "$PORT" "$VOLUME" || die "Démarrage impossible."
+    start "$image" "$NAME" "$PORT" "$VOLUME" "$AUTH" || die "Démarrage impossible."
 
     local real; real=$(podman exec "$NAME" php -r 'echo PHP_VERSION;')
     ok "StashBin tourne : PHP $real + $server"
     info ""
     info "  ${BOLD}http://127.0.0.1:$PORT/${OFF}"
     info ""
-    info "  Créer un compte     : $0 user <nom>"
+    case $AUTH in
+        0|false|off|no) warn "  Authentification désactivée : la création est ouverte à tous." ;;
+        *) info "  Créer un compte     : $0 user <nom>" ;;
+    esac
     info "  Voir les journaux   : $0 logs"
     info "  Changer de version  : $0 up 8.5 nginx"
     info "  Arrêter             : $0 down"
@@ -274,7 +281,9 @@ cmd_test() {
             printf '  %-4s %-7s ' "$v" "$s"
             podman volume rm -f "$tvol" >/dev/null 2>&1 || true
             local image; image=$(build "$v" "$s" 2>/dev/null)
-            if ! start "$image" "$tname" "$tport" "$tvol" >/dev/null 2>&1; then
+            # Authentification toujours active : le parcours joué par smoke()
+            # commence par une connexion, quel que soit AUTH dans l'environnement.
+            if ! start "$image" "$tname" "$tport" "$tvol" 1 >/dev/null 2>&1; then
                 printf '%sÉCHEC%s (le conteneur ne démarre pas)\n' "$RED" "$OFF"
                 rows+=("$v|$s|démarrage impossible"); failed=1; continue
             fi
@@ -318,7 +327,8 @@ ${BOLD}StashBin — banc d'essai multi-versions${OFF}
   $0 test [version…]          rejoue le parcours complet sur toute la matrice
 
 Versions : ${VERSIONS[*]}        Serveurs : ${SERVERS[*]}
-Variables : PORT (défaut 8081), TEST_PORT (défaut 8099)
+Variables : PORT (défaut 8081), TEST_PORT (défaut 8099),
+            AUTH (défaut 1 ; « AUTH=0 $0 up » ouvre la création à tous)
 EOF
 }
 

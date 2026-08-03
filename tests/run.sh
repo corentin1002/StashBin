@@ -74,8 +74,11 @@ php_tag() {
 }
 
 # Démarre une instance neuve et attend qu'elle réponde réellement.
+# Les arguments qui suivent la version et le serveur sont passés tels quels à
+# « podman run » (la suite « noauth » s'en sert pour poser STASHBIN_AUTH=0).
 start_app() {
     local v=$1 s=$2 image="stashbin-tests:${1}-${2}"
+    shift 2
 
     podman build --quiet -f "$CTX/Containerfile.$s" \
         --build-arg "PHP_TAG=$(php_tag "$v" "$s")" -t "$image" "$CTX" >/dev/null 2>&1 \
@@ -85,7 +88,7 @@ start_app() {
     podman volume rm -f "$VOL" >/dev/null 2>&1
     podman network exists "$NET" >/dev/null 2>&1 || podman network create "$NET" >/dev/null
 
-    podman run -d --name "$APP" --network "$NET" \
+    podman run -d --name "$APP" --network "$NET" "$@" \
         -v "$REPO:/var/www/stashbin:ro,z" \
         -v "$VOL:/var/lib/stashbin:z" \
         "$image" >/dev/null || die "Démarrage du conteneur impossible."
@@ -103,12 +106,38 @@ start_app() {
 }
 
 # Exécute un fichier de test PHP dans le conteneur, sous l'identité du serveur.
+# Les arguments qui suivent le nom de la suite sont ajoutés à « podman exec ».
 run_php_suite() {
+    local suite=$1
+    shift
     podman exec -u www-data \
         -e "STASHBIN_URL=http://127.0.0.1" \
         -e "STASHBIN_USER=$USER_NAME" \
         -e "STASHBIN_PASS=$USER_PASS" \
-        "$APP" php "/var/www/stashbin/tests/$1"
+        "$@" \
+        "$APP" php "/var/www/stashbin/tests/$suite"
+}
+
+# Les trois suites ordinaires, puis « noauth » sur une instance neuve démarrée
+# sans authentification : le réglage se lit au démarrage du serveur, il faut
+# donc un second conteneur plutôt qu'une bascule à chaud.
+run_php_suites() {
+    local v=$1 s=$2 prefix=${3:-}
+    start_app "$v" "$s"
+    for suite in unit.test.php api.test.php security.test.php; do
+        if run_php_suite "$suite"; then
+            record "$prefix${suite%.test.php}" OK
+        else
+            record "$prefix${suite%.test.php}" ÉCHEC
+        fi
+    done
+
+    start_app "$v" "$s" -e STASHBIN_AUTH=0
+    if run_php_suite noauth.test.php -e STASHBIN_AUTH=0; then
+        record "${prefix}noauth" OK
+    else
+        record "${prefix}noauth" ÉCHEC
+    fi
 }
 
 run_browser_suite() {
@@ -149,14 +178,7 @@ if (( matrix )); then
         for s in "${SERVERS[@]}"; do
             info ""
             info "${BOLD}══ PHP $v / $s ══${OFF}"
-            start_app "$v" "$s"
-            for suite in unit.test.php api.test.php security.test.php; do
-                if run_php_suite "$suite"; then
-                    record "$v/$s ${suite%.test.php}" OK
-                else
-                    record "$v/$s ${suite%.test.php}" ÉCHEC
-                fi
-            done
+            run_php_suites "$v" "$s" "$v/$s "
         done
     done
     # Les tests navigateur ne dépendent pas de la version de PHP : une passe suffit.
@@ -168,16 +190,14 @@ if (( matrix )); then
     fi
 else
     info "PHP $version / $server$( (( browser )) || echo ' — sans les tests navigateur')"
-    start_app "$version" "$server"
-    for suite in unit.test.php api.test.php security.test.php; do
-        if run_php_suite "$suite"; then
-            record "${suite%.test.php}" OK
-        else
-            record "${suite%.test.php}" ÉCHEC
-        fi
-    done
+    run_php_suites "$version" "$server"
     if (( browser )); then
+        # La suite « noauth » a laissé une instance ouverte : le navigateur, lui,
+        # joue le parcours authentifié et exige une instance ordinaire.
+        start_app "$version" "$server"
         if run_browser_suite; then record "navigateur" OK; else record "navigateur" ÉCHEC; fi
+    elif (( keep )); then
+        start_app "$version" "$server"
     fi
 fi
 
