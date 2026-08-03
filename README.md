@@ -15,6 +15,7 @@ Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une dif
 - **Expiration** — de 1 heure à jamais, purge automatique.
 - **Destruction après lecture** — avec écran de confirmation avant de consommer le secret.
 - **Lien de suppression** — remis au créateur, utilisable uniquement par un utilisateur connecté.
+- **Interface multilingue** — français et anglais, choisis d'après la langue du navigateur ; ajouter une langue, c'est déposer un fichier dans `src/lang/`.
 
 ## 🔍 Comment ça marche
 
@@ -64,7 +65,7 @@ Le code est monté depuis le projet : toute modification est visible immédiatem
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 140 tests, quelques minutes
+./tests/run.sh          # 179 tests, quelques minutes
 ./tests/run.sh --help   # options : version, serveur, matrice complète…
 ```
 
@@ -188,9 +189,33 @@ Tout se passe dans `config.php`, qui ne contient que des valeurs littérales : �
 | `auth` | `true` | Authentification exigée pour créer et supprimer |
 | `max_size` | 2 Mio | Taille maximale du payload chiffré |
 | `expirations` / `default_expiration` | 1 h → jamais, `1w` | Durées de vie proposées |
+| `default_locale` | `en` | Langue servie quand celle du navigateur n'est pas traduite |
 | `session_name` | `stashbin` | Nom du cookie de session |
 
-Deux d'entre eux acceptent en plus une variable d'environnement, indispensable en conteneur où le fichier est monté en lecture seule : `STASHBIN_DB` pour le chemin de la base, `STASHBIN_AUTH` pour l'authentification. La variable l'emporte sur le fichier quand elle est définie et non vide ; absente, elle ne change rien.
+Trois d'entre eux acceptent en plus une variable d'environnement, indispensable en conteneur où le fichier est monté en lecture seule : `STASHBIN_DB` pour le chemin de la base, `STASHBIN_AUTH` pour l'authentification, `STASHBIN_LOCALE` pour la langue de repli. La variable l'emporte sur le fichier quand elle est définie et non vide ; absente, elle ne change rien.
+
+### Langue de l'interface
+
+L'interface est servie dans la langue du visiteur, déduite de l'en-tête `Accept-Language` qu'envoie son navigateur. Une étiquette régionale retombe sur sa langue — `fr-CA` est servi en `fr`.
+
+**Quand aucune des langues demandées n'est traduite, c'est l'anglais qui est servi** (`default_locale`), comme plus largement lu que le français. Un visiteur germanophone ou hispanophone obtient donc l'interface anglaise, jamais une page à moitié traduite.
+
+Le paramètre `?lang=` force la langue d'une page, quel que soit le navigateur :
+
+```
+https://exemple.org/index.php?lang=en
+```
+
+Ce choix est sans état : ni cookie ni session ne le mémorisent, il est simplement reconduit sur les liens que l'application fabrique elle-même.
+
+**Ajouter une langue** — déposez un fichier dans `src/lang/`, nommé d'après son étiquette (`de.php`, `pt-br.php`), qui retourne le même tableau de clés que `src/lang/fr.php`. Rien d'autre : le code découvre les langues offertes en listant ce dossier. Une traduction incomplète est acceptée, les clés manquantes étant empruntées à une autre langue plutôt qu'affichées sous forme d'identifiants.
+
+Deux rôles à ne pas confondre :
+
+- **`default_locale` (`en`) est la langue *servie*** quand la négociation ne trouve rien.
+- **`src/lang/fr.php` est la langue de *référence*** : c'est de lui qu'une traduction partielle emprunte ses chaînes manquantes. StashBin est écrit en français, ses chaînes y naissent, et les autres langues les traduisent. Toute clé employée dans le code doit donc y figurer.
+
+Un test unitaire vérifie que chaque langue offerte traduit intégralement la référence et que ses marqueurs `{ainsi}` correspondent.
 
 ### Instance ouverte, sans authentification
 
@@ -235,7 +260,8 @@ tests/              jeu de test complet (voir son README)
 ├── noauth.test.php    comportement de l'instance ouverte
 ├── browser.test.mjs   cryptographie et parcours, dans Chromium
 └── lib.php         assertions et client HTTP, sans dépendance
-src/bootstrap.php   base de données, sessions, CSRF, helpers
+src/bootstrap.php   base de données, sessions, CSRF, langue, helpers
+src/lang/           un fichier par langue offerte (fr.php fait référence)
 bin/user.php        gestion des comptes en CLI
 data/               base SQLite (créée automatiquement)
 └── .htaccess       « Require all denied » : garde-fou si le document root

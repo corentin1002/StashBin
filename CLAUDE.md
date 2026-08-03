@@ -16,7 +16,7 @@ Ce sont les promesses du produit. Une modification qui en casse une est un bug, 
 ## Commandes
 
 ```bash
-./tests/run.sh                    # 140 tests, quelques minutes — à lancer avant de valider
+./tests/run.sh                    # 179 tests, quelques minutes — à lancer avant de valider
 ./tests/run.sh --no-browser       # sans Chromium, plus rapide pendant l'itération
 ./tests/run.sh --matrix           # suites PHP sur les huit combinaisons version × serveur
 
@@ -32,7 +32,8 @@ AUTH=0 ./containers/stashbin.sh up  # instance ouverte, sans authentification
 
 ## Conventions
 
-- **Commentaires, textes d'interface, descriptions de test, messages de commit et CHANGELOG : en français.** Identifiants du code (fonctions, variables, colonnes) : en anglais. Cette séparation est constante dans tout le dépôt.
+- **Commentaires, descriptions de test, messages de commit et CHANGELOG : en français.** Identifiants du code (fonctions, variables, colonnes) : en anglais. Cette séparation est constante dans tout le dépôt.
+- **Aucun texte d'interface en dur.** Toute chaîne vue par un visiteur passe par `t()` et vit dans `src/lang/`. `src/lang/fr.php` fait référence : une clé qui n'y figure pas n'a pas de repli. Ne le confondez pas avec `default_locale`, qui vaut `en` et désigne la langue *servie* quand la négociation ne trouve rien. Les commentaires des fichiers de langue restent en français, y compris dans `en.php`.
 - Un commentaire explique une contrainte que le code ne peut pas montrer. Pas de commentaire qui paraphrase la ligne suivante, ni qui s'adresse au relecteur d'une pull request.
 - `declare(strict_types=1);` en tête de tout fichier PHP contenant du code exécutable. `config.php`, qui ne fait que retourner un tableau, en est exempt.
 - Requêtes préparées systématiques. `db()->quote()` est toléré dans les tests, jamais dans `public/` ni `src/`.
@@ -47,17 +48,21 @@ Chacun a coûté du temps une fois ; ils sont documentés pour ne pas le refaire
 - **nginx plafonne les corps de requête à 1 Mio par défaut**, alors que `config.php` autorise 2 Mio. Toute configuration nginx doit fixer `client_max_body_size` au-dessus de `max_size`, sinon les gros secrets sont rejetés par un `413` avant d'atteindre PHP.
 - **PDO_SQLite renvoie des entiers natifs depuis PHP 8.1.** `api.php` compare `expires` à `time()` sans transtypage et en dépend.
 - **Depuis PHP 8.4, le coût bcrypt par défaut passe de 10 à 12.** Les comptes existants restent valides mais conservent l'ancien coût ; le code ne les re-hache pas.
+- **Le JavaScript ne compare jamais le message d'une erreur d'API**, seulement son champ `code`. Les messages sont traduits ; le code, lui, est le contrat. `showError()` s'appuyait autrefois sur `err.message === 'introuvable'`, ce que la première traduction a cassé.
+- **La CSP interdit le script inline**, donc les chaînes destinées au JavaScript ne peuvent pas être injectées dans un `<script>`. Elles voyagent en attribut `data-i18n` de `<body>`, posé par `client_strings()`. N'assouplissez pas la CSP pour contourner ça.
+- **Les contextes Chromium des tests fixent leur langue explicitement.** L'interface suit `Accept-Language` et la langue par défaut du navigateur varie d'une image à l'autre : sans `locale:` explicite, les libellés attendus deviennent imprévisibles. Un test de traduction ouvre en plus son propre contexte, sans session, sinon `login.php` redirige vers la page de création.
 - **Les tests navigateur partagent l'espace réseau du conteneur applicatif** pour obtenir une origine `127.0.0.1`, donc un contexte sécurisé. Ne remplacez pas ce montage par un drapeau Chromium de contournement : il ne fonctionne pas de façon fiable.
 
 ## Organisation
 
 ```
 config.php          valeurs littérales : authentification, expirations, taille
-                    max, chemin de la base ; surcharges d'environnement dans
-                    env_overrides() de src/bootstrap.php
+                    max, chemin de la base, langue de repli ; surcharges
+                    d'environnement dans env_overrides() de src/bootstrap.php
 public/             document root — pages, api.php, assets/
   assets/stashbin.js  toute la cryptographie navigateur
-src/bootstrap.php   base, sessions, CSRF, helpers ; tout le code partagé
+src/bootstrap.php   base, sessions, CSRF, langue, helpers ; tout le code partagé
+src/lang/           un fichier par langue offerte ; fr.php fait référence
 bin/user.php        gestion des comptes en CLI
 containers/         banc d'essai PHP 8.3→8.6 × Apache/nginx
 tests/              jeu de test — voir tests/README.md
@@ -74,6 +79,7 @@ Toute modification du comportement doit venir avec un test. Le socle est `tests/
 - Une garantie de sécurité → `tests/security.test.php`
 - Un comportement propre à l'instance ouverte → `tests/noauth.test.php`, jouée contre un second conteneur démarré avec `STASHBIN_AUTH=0` (le réglage est lu au démarrage, il n'y a pas de bascule à chaud)
 - Une fonction de `src/bootstrap.php` → `tests/unit.test.php`
+- Une traduction ou la négociation de langue → `tests/unit.test.php` pour les fonctions, `tests/browser.test.mjs` pour ce que voit le visiteur
 - De la cryptographie ou un parcours d'interface → `tests/browser.test.mjs`
 
 Les suites PHP tournent **dans le conteneur applicatif** : elles peuvent donc confronter la réponse HTTP au contenu réel de la base, ce qui est le seul moyen de vérifier qu'un jeton est bien stocké haché ou qu'un payload n'est jamais déchiffré.

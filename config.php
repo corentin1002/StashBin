@@ -8,6 +8,7 @@
 //   STASHBIN_DB      chemin de la base SQLite
 //   STASHBIN_AUTH    « 0 », « false », « off » ou « no » désactivent
 //                    l'authentification ; toute autre valeur l'exige
+//   STASHBIN_LOCALE  langue de repli
 //
 // La variable l'emporte sur le fichier quand elle est définie et non vide.
 // Absente, elle ne change rien : c'est ce fichier qui décide.
@@ -36,6 +37,16 @@ return [
         'never' => null,
     ],
     'default_expiration' => '1w',
+
+    // Langue servie quand le navigateur n'en demande aucune de disponible —
+    // l'anglais, faute de mieux, étant plus largement lu que le français.
+    // Les langues offertes sont les fichiers de src/lang/ : en ajouter une,
+    // c'est y déposer un fichier, sans toucher au code.
+    //
+    // À ne pas confondre avec src/lang/fr.php, qui reste le fichier de
+    // référence : c'est de lui qu'une traduction incomplète emprunte ses
+    // chaînes manquantes, quelle que soit la valeur réglée ici.
+    'default_locale' => 'en',
 
     // Nom du cookie de session.
     'session_name' => 'stashbin',

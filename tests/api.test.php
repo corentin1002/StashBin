@@ -21,7 +21,7 @@ test('un visiteur anonyme ne peut pas créer de secret (401)', function () use (
     $anon = new Http($base);
     $res = $anon->post('/api.php', json_encode(['payload' => []]), ['Content-Type' => 'application/json']);
     assert_eq(401, $res->status, 'création refusée sans session');
-    assert_eq('authentification requise', $res->json()['error'], 'message explicite');
+    assert_eq('unauthorized', $res->json()['code'], 'code stable, indépendant de la langue');
 });
 
 test('une session sans jeton CSRF est refusée (403)', function () use ($http) {
@@ -57,7 +57,7 @@ foreach (['v', 'iv', 'salt', 'iter', 'pwd', 'ct'] as $field) {
         unset($payload[$field]);
         $res = $http->createSecret(['payload' => $payload], $token);
         assert_eq(400, $res->status, "champ « $field » obligatoire");
-        assert_eq('payload incomplet', $res->json()['error'], 'message explicite');
+        assert_eq('incomplete_payload', $res->json()['code'], 'code stable, indépendant de la langue');
     });
 }
 
@@ -102,7 +102,7 @@ group('Création — durées de vie');
 test('une durée de vie inconnue est refusée (400)', function () use ($http, $token) {
     $res = $http->createSecret(['expire' => '42siecles'], $token);
     assert_eq(400, $res->status, 'clé de durée inexistante rejetée');
-    assert_eq('durée de vie inconnue', $res->json()['error'], 'message explicite');
+    assert_eq('unknown_expiration', $res->json()['code'], 'code stable, indépendant de la langue');
 });
 
 foreach (['1h' => 3600, '1d' => 86400, '1w' => 604800, '1m' => 2592000] as $key => $seconds) {
@@ -155,7 +155,7 @@ test('un identifiant bien formé mais inconnu renvoie 404, pas 400', function ()
 test('un identifiant inexistant renvoie 404', function () use ($http) {
     $res = $http->get('/api.php?id=' . str_repeat('z', 16));
     assert_eq(404, $res->status, 'secret introuvable');
-    assert_eq('introuvable', $res->json()['error'], 'message explicite');
+    assert_eq('not_found', $res->json()['code'], 'code stable, indépendant de la langue');
 });
 
 test('la relecture restitue le payload à l\'identique', function () use ($http, $token) {
@@ -251,5 +251,41 @@ foreach (['PUT', 'DELETE', 'PATCH'] as $method) {
         assert_eq(405, $res->status, "$method non autorisée");
     });
 }
+
+// ---------------------------------------------------------------------------
+group('Langue de la réponse');
+
+test('une erreur porte un code stable et un message traduit', function () use ($http) {
+    $res = $http->request('GET', '/api.php?id=' . str_repeat('z', 16), null, ['Accept-Language' => 'en']);
+    assert_eq(404, $res->status, 'secret inexistant');
+    assert_eq('not_found', $res->json()['code'], 'le code ne change pas avec la langue');
+    assert_eq('not found', $res->json()['error'], 'le message, lui, est traduit');
+});
+
+test('sans en-tête de langue, l\'API répond dans la langue de repli', function () use ($base) {
+    // Client muet sur la langue : c'est default_locale qui tranche, et il vaut
+    // « en ».
+    $muet = new Http($base, language: null);
+    $res = $muet->get('/api.php?id=' . str_repeat('z', 16));
+    assert_eq('not found', $res->json()['error'], 'repli sur l\'anglais');
+});
+
+test('une langue que l\'on ne sait pas servir donne l\'anglais', function () use ($http) {
+    $res = $http->request('GET', '/api.php?id=' . str_repeat('z', 16), null, ['Accept-Language' => 'de, es;q=0.8']);
+    assert_eq('not found', $res->json()['error'], 'ni allemand ni espagnol : anglais');
+});
+
+test('la langue demandée n\'altère ni le statut ni le code', function () use ($http) {
+    foreach (['fr', 'en', 'de', ''] as $lang) {
+        $res = $http->request('GET', '/api.php?id=!!!', null, $lang === '' ? [] : ['Accept-Language' => $lang]);
+        assert_eq(400, $res->status, "identifiant invalide, quelle que soit la langue (« $lang »)");
+        assert_eq('invalid_id', $res->json()['code'], "code inchangé (« $lang »)");
+    }
+});
+
+test('toute réponse annonce qu\'elle dépend de la langue demandée', function () use ($http) {
+    $res = $http->get('/api.php?id=' . str_repeat('z', 16));
+    assert_contains('Accept-Language', (string) $res->header('Vary'), 'en-tête Vary posé');
+});
 
 exit(summary('Règles métier de l\'API'));

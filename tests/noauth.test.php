@@ -58,7 +58,7 @@ test('un jeton CSRF erroné reste refusé (403)', function () use ($http) {
 test('la validation du payload est inchangée (400)', function () use ($http, $token) {
     $res = $http->createSecret(['payload' => ['v' => 1, 'iv' => 'A']], $token);
     assert_eq(400, $res->status, 'payload incomplet toujours rejeté');
-    assert_eq('payload incomplet', $res->json()['error'], 'même message qu\'avec authentification');
+    assert_eq('incomplete_payload', $res->json()['code'], 'même code qu\'avec authentification');
 });
 
 // ---------------------------------------------------------------------------
