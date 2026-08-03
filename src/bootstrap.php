@@ -10,13 +10,13 @@ function config(): array
     return $config;
 }
 
-// Applique les surcharges d'environnement par-dessus config.php, qui ne
-// contient que des valeurs littérales. Une variable absente ou vide ne
-// surcharge rien : le fichier reste la référence.
+// Applies environment overrides on top of config.php, which holds nothing but
+// literal values. A variable that is absent or empty overrides nothing: the
+// file remains the reference.
 //
-// Fonction séparée, et non quelques lignes dans config(), parce que celle-ci
-// mémoïse : c'est le seul point où la lecture de l'environnement est
-// éprouvable sans relancer un processus.
+// A separate function rather than a few lines inside config(), because that one
+// memoises: this is the only point where reading the environment can be tested
+// without starting a new process.
 function env_overrides(array $config): array
 {
     $db = getenv('STASHBIN_DB');
@@ -24,8 +24,8 @@ function env_overrides(array $config): array
         $config['db'] = $db;
     }
 
-    // Comparaison explicite plutôt qu'un « ?: » : « 0 » est falsy en PHP, et
-    // c'est justement la valeur qui doit désactiver l'authentification.
+    // An explicit comparison rather than a "?:": "0" is falsy in PHP, and that
+    // is precisely the value meant to disable authentication.
     $auth = getenv('STASHBIN_AUTH');
     if (is_string($auth) && $auth !== '') {
         $config['auth'] = !in_array(strtolower($auth), ['0', 'false', 'off', 'no'], true);
@@ -72,7 +72,7 @@ function db(): PDO
     return $pdo;
 }
 
-// Supprime les pastes expirés (appelé à chaque création, le trafic est faible).
+// Deletes expired pastes (called on every creation; traffic is low).
 function purge_expired(): void
 {
     $stmt = db()->prepare('DELETE FROM pastes WHERE expires IS NOT NULL AND expires < ?');
@@ -110,16 +110,15 @@ function current_user(): ?array
     return $stmt->fetch() ?: null;
 }
 
-// Droit de créer et de supprimer un secret. L'authentification désactivée,
-// il n'y a plus de compte du tout : tout visiteur est autorisé.
+// The right to create and delete a secret. With authentication disabled there
+// are no accounts at all: every visitor is authorised.
 function is_authorized(): bool
 {
     return !auth_enabled() || current_user() !== null;
 }
 
-// Renvoie null quand l'authentification est désactivée : il n'y a alors aucun
-// utilisateur à nommer, et l'appelant doit s'en accommoder plutôt que d'en
-// inventer un.
+// Returns null when authentication is disabled: there is then no user to name,
+// and the caller must cope with that rather than invent one.
 function require_login(): ?array
 {
     if (!auth_enabled()) {
@@ -163,10 +162,10 @@ function json_out(int $status, array $data): never
     exit;
 }
 
-// Erreur d'API. Le « code » est stable et constitue le contrat avec le
-// JavaScript ; le « error » qui l'accompagne est traduit, donc destiné à
-// l'affichage et à rien d'autre. Comparer le message reviendrait à faire
-// dépendre le client de la langue du visiteur.
+// An API error. The "code" is stable and forms the contract with the
+// JavaScript; the "error" beside it is translated, hence meant for display and
+// nothing else. Comparing the message would make the client depend on the
+// visitor's language.
 function json_error(int $status, string $code): never
 {
     json_out($status, ['error' => t('error.' . $code), 'code' => $code]);
@@ -178,11 +177,11 @@ function e(string $s): string
 }
 
 // ---------------------------------------------------------------------------
-// Langue
+// Language
 // ---------------------------------------------------------------------------
 
-// Langues offertes : un fichier par langue dans src/lang/. En ajouter une, c'est
-// déposer un fichier, sans toucher au code.
+// The languages on offer: one file per language in src/lang/. Adding one means
+// dropping a file there, without touching the code.
 function available_locales(): array
 {
     static $locales = null;
@@ -196,32 +195,33 @@ function available_locales(): array
     return $locales;
 }
 
-// Langue dont toutes les clés existent, et à laquelle une traduction
-// incomplète emprunte ce qui lui manque. C'est aussi le seul fichier dont la
-// présence soit garantie : StashBin est écrit en français, ses chaînes y
-// naissent, et les autres langues les traduisent.
+// The language whose keys all exist, and from which an incomplete translation
+// borrows what it lacks. It is also the only file whose presence is guaranteed:
+// StashBin's interface strings are authored in French, and the other languages
+// translate them.
 //
-// À distinguer de fallback_locale(), qui est la langue *servie* quand rien ne
-// correspond. Les deux ont commencé confondues, et les séparer permet de servir
-// l'anglais par défaut sans perdre le repli clé à clé.
+// To be distinguished from fallback_locale(), which is the language *served*
+// when nothing matches. The two started out conflated, and separating them is
+// what allows English to be served by default without losing the key-by-key
+// fallback.
 function reference_locale(): string
 {
     return 'fr';
 }
 
-// Langue servie quand la négociation ne trouve rien. Une valeur de
-// configuration qui ne correspond à aucun fichier retomberait sur un
-// dictionnaire vide : mieux vaut la langue de référence, toujours présente.
+// The language served when negotiation finds nothing. A configuration value
+// matching no file would fall back to an empty dictionary: better the reference
+// language, which is always present.
 function fallback_locale(): string
 {
     $configured = config()['default_locale'];
     return in_array($configured, available_locales(), true) ? $configured : reference_locale();
 }
 
-// Décompose un en-tête Accept-Language en étiquettes triées par qualité
-// décroissante. Ce qui n'a pas la forme d'une étiquette de langue est ignoré
-// plutôt que de faire échouer la négociation : l'en-tête n'est pas maîtrisé,
-// et « * » lui-même n'a rien à quoi correspondre ici.
+// Breaks an Accept-Language header down into tags sorted by decreasing
+// quality. Anything not shaped like a language tag is ignored rather than made
+// to fail negotiation: the header is not under our control, and "*" itself has
+// nothing to match here.
 function parse_accept_language(string $header): array
 {
     $tags = [];
@@ -242,19 +242,19 @@ function parse_accept_language(string $header): array
         }
         $tags[] = ['tag' => $tag, 'q' => $q];
     }
-    // usort() est stable depuis PHP 8.0 : à qualité égale, l'ordre de l'en-tête
-    // est conservé, ce qui est exactement la préférence exprimée.
+    // usort() has been stable since PHP 8.0: at equal quality the header's own
+    // order is preserved, which is exactly the preference expressed.
     usort($tags, static fn(array $a, array $b) => $b['q'] <=> $a['q']);
     return array_column($tags, 'tag');
 }
 
-// Choisit la langue à servir : paramètre explicite, puis Accept-Language par
-// qualité décroissante, puis repli.
+// Picks the language to serve: explicit parameter, then Accept-Language by
+// decreasing quality, then fallback.
 //
-// Une étiquette régionale retombe sur sa langue — « fr-CA » est servi en
-// « fr » — parce qu'il n'y a pas de variantes régionales à offrir. Fonction
-// pure, et c'est délibéré : c'est le seul moyen d'éprouver la négociation sans
-// fabriquer une requête HTTP par cas.
+// A regional tag falls back to its language — "fr-CA" is served as "fr" —
+// because there are no regional variants to offer. A pure function, and
+// deliberately so: it is the only way to test negotiation without building an
+// HTTP request per case.
 function negotiate_locale(?string $header, ?string $override, array $available, string $fallback): string
 {
     if ($override !== null && in_array($override, $available, true)) {
@@ -286,9 +286,9 @@ function locale(): string
     return $locale;
 }
 
-// Le nom de la langue devient un chemin de fichier : il ne se lit que s'il a la
-// forme d'une étiquette. locale() ne renvoie déjà que des valeurs connues, mais
-// cette fonction ne dépend pas de son seul appelant pour rester sûre.
+// The language name becomes a file path: it is only read if it is shaped like a
+// tag. locale() already returns known values only, but this function does not
+// rely on its sole caller to stay safe.
 function load_lang(string $locale): array
 {
     if (!preg_match('/^[a-z]{1,8}(-[a-z0-9]{1,8})*$/', $locale)) {
@@ -298,10 +298,10 @@ function load_lang(string $locale): array
     return is_file($file) ? require $file : [];
 }
 
-// Dictionnaire de la langue servie, complété par celui du repli puis par celui
-// de référence : une clé absente d'une traduction partielle s'affiche dans une
-// autre langue plutôt qu'en identifiant brut. La couche de référence tient même
-// si default_locale désigne une traduction elle-même incomplète.
+// The dictionary of the language served, topped up by the fallback's and then
+// the reference's: a key missing from a partial translation shows up in another
+// language rather than as a raw identifier. The reference layer holds even if
+// default_locale points at a translation that is itself incomplete.
 function strings(): array
 {
     static $strings = null;
@@ -313,9 +313,9 @@ function strings(): array
     return $strings;
 }
 
-// Traduit une clé, en remplaçant les marqueurs {ainsi} par les valeurs données.
-// Le résultat n'est pas échappé : c'est à l'appelant de le faire, comme pour
-// toute autre chaîne posée dans du HTML.
+// Translates a key, replacing {placeholders} with the values given. The result
+// is not escaped: that is the caller's job, as for any other string placed into
+// HTML.
 function t(string $key, array $vars = []): string
 {
     $s = strings()[$key] ?? $key;
@@ -325,17 +325,17 @@ function t(string $key, array $vars = []): string
     return $s;
 }
 
-// Traduit, échappe, puis seulement ensuite substitue des fragments HTML déjà
-// sûrs. L'ordre fait tout : échapper après la substitution neutraliserait les
-// balises qu'on vient d'insérer.
+// Translates, escapes, and only then substitutes HTML fragments that are
+// already safe. Order is everything: escaping after substitution would
+// neutralise the very tags just inserted.
 function t_html(string $key, array $fragments = []): string
 {
     return strtr(e(t($key)), $fragments);
 }
 
-// Chaînes destinées au JavaScript, publiées dans la page. La CSP interdit le
-// script inline, et un second dictionnaire côté client finirait par diverger
-// du premier : les clés « js. » voyagent donc en attribut de <body>.
+// Strings meant for the JavaScript, published into the page. The CSP forbids
+// inline script, and a second client-side dictionary would end up diverging
+// from the first: the "js." keys therefore travel in a <body> attribute.
 function client_strings(): string
 {
     $out = [];
@@ -347,18 +347,18 @@ function client_strings(): string
     return json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }
 
-// Reconduit un choix de langue explicite d'une page à la suivante. Le paramètre
-// est sans état — ni cookie ni session ne le mémorisent — il faut donc le
-// repasser aux URL que l'application fabrique elle-même, sans quoi la première
-// navigation ramènerait la langue du navigateur.
+// Carries an explicit language choice from one page to the next. The parameter
+// is stateless — neither cookie nor session remembers it — so it must be passed
+// on to the URLs the application builds itself, otherwise the first navigation
+// would bring the browser's language back.
 function lang_param(string $separator = '?'): string
 {
     return isset($_GET['lang']) ? $separator . 'lang=' . urlencode(locale()) : '';
 }
 
-// Le contenu dépend de la langue demandée : sans cet en-tête, un cache
-// intermédiaire servirait la première réponse reçue à tous les visiteurs
-// suivants, quelle que soit leur langue.
+// The content depends on the language requested: without this header, an
+// intermediate cache would serve the first response it received to every
+// subsequent visitor, whatever their language.
 function vary_language(): void
 {
     header('Vary: Accept-Language');

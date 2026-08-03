@@ -16,7 +16,7 @@ Ce sont les promesses du produit. Une modification qui en casse une est un bug, 
 ## Commandes
 
 ```bash
-./tests/run.sh                    # 179 tests, quelques minutes — à lancer avant de valider
+./tests/run.sh                    # 183 tests, quelques minutes — à lancer avant de valider
 ./tests/run.sh --no-browser       # sans Chromium, plus rapide pendant l'itération
 ./tests/run.sh --matrix           # suites PHP sur les huit combinaisons version × serveur
 
@@ -32,12 +32,14 @@ AUTH=0 ./containers/stashbin.sh up  # instance ouverte, sans authentification
 
 ## Conventions
 
-- **Commentaires, descriptions de test, messages de commit et CHANGELOG : en français.** Identifiants du code (fonctions, variables, colonnes) : en anglais. Cette séparation est constante dans tout le dépôt.
-- **Aucun texte d'interface en dur.** Toute chaîne vue par un visiteur passe par `t()` et vit dans `src/lang/`. `src/lang/fr.php` fait référence : une clé qui n'y figure pas n'a pas de repli. Ne le confondez pas avec `default_locale`, qui vaut `en` et désigne la langue *servie* quand la négociation ne trouve rien. Les commentaires des fichiers de langue restent en français, y compris dans `en.php`.
+- **Tout ce qui est publié est en anglais** : commentaires du code, descriptions et messages d'assertion des tests, sorties des scripts, messages de commit, titres et corps de pull request, noms de branche, et tous les `.md` — à l'exception de `README.fr.md` et de ce fichier. Les identifiants du code (fonctions, variables, colonnes) l'étaient déjà. **Ce fichier et nos échanges restent en français.**
+- L'historique d'avant l'internationalisation est en français. On ne le réécrit pas : la rupture est datée et se lit très bien.
+- **`README.md` est en anglais, `README.fr.md` en français, et l'anglais fait foi.** Toute modification de l'un vient avec sa traduction dans l'autre, dans le même commit — un test de `tests/unit.test.php` compare la structure des sections et le nombre de tests annoncé, et échoue si un seul des deux a bougé. Les autres `.md` restent monolingues : les dupliquer, c'est garantir qu'ils divergent.
+- **Aucun texte d'interface en dur.** Toute chaîne vue par un visiteur passe par `t()` et vit dans `src/lang/`. `src/lang/fr.php` fait référence : une clé qui n'y figure pas n'a pas de repli. Ne le confondez pas avec `default_locale`, qui vaut `en` et désigne la langue *servie* quand la négociation ne trouve rien.
 - Un commentaire explique une contrainte que le code ne peut pas montrer. Pas de commentaire qui paraphrase la ligne suivante, ni qui s'adresse au relecteur d'une pull request.
 - `declare(strict_types=1);` en tête de tout fichier PHP contenant du code exécutable. `config.php`, qui ne fait que retourner un tableau, en est exempt.
 - Requêtes préparées systématiques. `db()->quote()` est toléré dans les tests, jamais dans `public/` ni `src/`.
-- Le CHANGELOG suit Keep a Changelog : rubriques `Ajouté`, `Corrigé`, `Sécurité`.
+- Le CHANGELOG suit Keep a Changelog : rubriques `Added`, `Fixed`, `Security`.
 
 ## Pièges vérifiés
 
@@ -48,7 +50,7 @@ Chacun a coûté du temps une fois ; ils sont documentés pour ne pas le refaire
 - **nginx plafonne les corps de requête à 1 Mio par défaut**, alors que `config.php` autorise 2 Mio. Toute configuration nginx doit fixer `client_max_body_size` au-dessus de `max_size`, sinon les gros secrets sont rejetés par un `413` avant d'atteindre PHP.
 - **PDO_SQLite renvoie des entiers natifs depuis PHP 8.1.** `api.php` compare `expires` à `time()` sans transtypage et en dépend.
 - **Depuis PHP 8.4, le coût bcrypt par défaut passe de 10 à 12.** Les comptes existants restent valides mais conservent l'ancien coût ; le code ne les re-hache pas.
-- **Le JavaScript ne compare jamais le message d'une erreur d'API**, seulement son champ `code`. Les messages sont traduits ; le code, lui, est le contrat. `showError()` s'appuyait autrefois sur `err.message === 'introuvable'`, ce que la première traduction a cassé.
+- **Rien ne compare jamais le message d'une erreur d'API**, seulement son champ `code`. Les messages sont traduits ; le code, lui, est le contrat. Deux endroits s'y sont laissé prendre : `showError()` dans `stashbin.js`, puis le parcours de fumée de `containers/stashbin.sh` — celui-là est resté cassé une PR entière, parce qu'il n'est pas joué par `tests/run.sh`.
 - **La CSP interdit le script inline**, donc les chaînes destinées au JavaScript ne peuvent pas être injectées dans un `<script>`. Elles voyagent en attribut `data-i18n` de `<body>`, posé par `client_strings()`. N'assouplissez pas la CSP pour contourner ça.
 - **Les contextes Chromium des tests fixent leur langue explicitement.** L'interface suit `Accept-Language` et la langue par défaut du navigateur varie d'une image à l'autre : sans `locale:` explicite, les libellés attendus deviennent imprévisibles. Un test de traduction ouvre en plus son propre contexte, sans session, sinon `login.php` redirige vers la page de création.
 - **Les tests navigateur partagent l'espace réseau du conteneur applicatif** pour obtenir une origine `127.0.0.1`, donc un contexte sécurisé. Ne remplacez pas ce montage par un drapeau Chromium de contournement : il ne fonctionne pas de façon fiable.
@@ -80,6 +82,8 @@ Toute modification du comportement doit venir avec un test. Le socle est `tests/
 - Un comportement propre à l'instance ouverte → `tests/noauth.test.php`, jouée contre un second conteneur démarré avec `STASHBIN_AUTH=0` (le réglage est lu au démarrage, il n'y a pas de bascule à chaud)
 - Une fonction de `src/bootstrap.php` → `tests/unit.test.php`
 - Une traduction ou la négociation de langue → `tests/unit.test.php` pour les fonctions, `tests/browser.test.mjs` pour ce que voit le visiteur
+
+Les suites affirment parfois des libellés d'interface **en français** : `tests/lib.php` pose `Accept-Language: fr` sur chaque requête et le contexte Chromium fixe `locale: 'fr-FR'`, pour que ces libellés ne dépendent pas du repli du serveur. `new Http($base, language: null)` sert à éprouver le repli lui-même.
 - De la cryptographie ou un parcours d'interface → `tests/browser.test.mjs`
 
 Les suites PHP tournent **dans le conteneur applicatif** : elles peuvent donc confronter la réponse HTTP au contenu réel de la base, ce qui est le seul moyen de vérifier qu'un jeton est bien stocké haché ou qu'un payload n'est jamais déchiffré.
@@ -92,4 +96,4 @@ Après avoir ajouté une fonctionnalité, cassez-la volontairement et vérifiez 
 
 - Ne committez pas sur `main` : créez une branche, puis proposez une pull request.
 - Ne committez et ne poussez que si on vous le demande.
-- Messages de commit en français, à l'impératif ou au substantif, avec un corps qui explique le *pourquoi* quand il n'est pas évident.
+- Messages de commit, titres et corps de pull request en anglais, à l'impératif ou au substantif, avec un corps qui explique le *pourquoi* quand il n'est pas évident.

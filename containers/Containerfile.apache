@@ -1,17 +1,17 @@
 # StashBin — Apache + mod_php.
-# La version de PHP est un paramètre de build ; le code est monté au démarrage
-# (jamais copié dans l'image), ce qui permet d'éditer sans reconstruire.
+# The PHP version is a build argument; the code is mounted at startup (never
+# copied into the image), which allows editing without rebuilding.
 #
 #   podman build -f containers/Containerfile.apache \
 #       --build-arg PHP_TAG=8.5-apache -t stashbin:8.5-apache containers/
 #
-# En pratique, passez plutôt par containers/stashbin.sh.
+# In practice, go through containers/stashbin.sh instead.
 
 ARG PHP_TAG=8.4-apache
 FROM docker.io/library/php:${PHP_TAG}
 
-# Racine web sur public/ : le reste du dépôt (src/, bin/, config.php) n'est
-# jamais exposé.
+# Web root on public/: the rest of the repository (src/, bin/, config.php) is
+# never exposed.
 RUN sed -i 's#/var/www/html#/var/www/stashbin/public#g' \
         /etc/apache2/sites-available/000-default.conf
 
@@ -27,7 +27,7 @@ RUN printf '%s\n' \
         > /etc/apache2/conf-available/stashbin.conf \
     && a2enconf stashbin
 
-# La base vit hors du code, dans un volume écrivable par PHP.
+# The database lives outside the code, in a volume writable by PHP.
 RUN mkdir -p /var/lib/stashbin && chown www-data:www-data /var/lib/stashbin
 ENV STASHBIN_DB=/var/lib/stashbin/stashbin.sqlite
 VOLUME /var/lib/stashbin

@@ -1,8 +1,8 @@
 <?php
-// Anglais. Les clés sont celles de fr.php, qui fait référence : une clé absente
-// d'ici est servie en français plutôt qu'affichée sous forme d'identifiant.
+// English. The keys are those of fr.php, which is the reference: a key missing
+// from here is served in French rather than shown as an identifier.
 return [
-    // --- Page de création ---------------------------------------------------
+    // --- Creation page ------------------------------------------------------
     'create.page_title'          => 'StashBin — New secret',
     'create.logged_in'           => 'Signed in as {user} — {logout}',
     'create.logout'              => 'sign out',
@@ -22,14 +22,14 @@ return [
     'create.copy'                => 'Copy',
     'create.another'             => 'Create another secret',
 
-    // --- Durées de vie ------------------------------------------------------
+    // --- Lifetimes ----------------------------------------------------------
     'expire.1h'    => '1 hour',
     'expire.1d'    => '1 day',
     'expire.1w'    => '1 week',
     'expire.1m'    => '1 month',
     'expire.never' => 'Never',
 
-    // --- Page de lecture ----------------------------------------------------
+    // --- Reading page -------------------------------------------------------
     'view.page_title'        => 'StashBin — Shared secret',
     'view.loading'           => 'Loading…',
     'view.burn_warning'      => '⚠️ This secret will be {emphasis}. Only continue if you are ready to read it now.',
@@ -41,7 +41,7 @@ return [
     'view.burned_notice'     => '⚠️ This secret has just been destroyed: this page is the only copy. It will not be available again.',
     'view.copy_content'      => 'Copy the content',
 
-    // --- Page de connexion --------------------------------------------------
+    // --- Sign-in page -------------------------------------------------------
     'login.page_title'      => 'StashBin — Sign in',
     'login.intro'           => 'Sign in to create a secret.',
     'login.username'        => 'Username',
@@ -50,7 +50,7 @@ return [
     'login.expired'         => 'Session expired, try again.',
     'login.bad_credentials' => 'Incorrect credentials.',
 
-    // --- Chaînes du JavaScript ----------------------------------------------
+    // --- JavaScript strings -------------------------------------------------
     'js.encrypting'           => 'Encrypting…',
     'js.decrypting'           => 'Decrypting…',
     'js.copied'               => 'Copied ✔',
@@ -62,7 +62,7 @@ return [
     'js.error'                => 'Error: {error}',
     'js.server_error'         => 'server error',
 
-    // --- Messages de l'API --------------------------------------------------
+    // --- API messages -------------------------------------------------------
     'error.invalid_id'         => 'invalid identifier',
     'error.not_found'          => 'not found',
     'error.bad_delete_token'   => 'invalid deletion token',

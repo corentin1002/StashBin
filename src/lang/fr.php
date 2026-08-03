@@ -1,15 +1,15 @@
 <?php
-// Français — langue de repli de StashBin.
+// French — StashBin's reference language.
 //
-// Ce fichier fait référence : toute clé employée quelque part dans le code doit
-// y figurer. Les autres langues peuvent être incomplètes, une clé manquante y
-// est comblée depuis ici plutôt que d'afficher son identifiant à l'écran.
+// This file is the reference: every key used anywhere in the code must appear
+// in it. Other languages may be incomplete; a key missing there is filled in
+// from here rather than showing its identifier on screen.
 //
-// Les clés « js. » sont publiées dans la page à destination du JavaScript ;
-// les clés « error. » sont les messages de l'API, dont le code, lui, ne se
-// traduit pas. Les marqueurs {ainsi} sont remplacés à l'affichage.
+// The "js." keys are published into the page for the JavaScript; the "error."
+// keys are the API messages, whose code, by contrast, is not translated. The
+// {placeholders} are substituted at display time.
 return [
-    // --- Page de création ---------------------------------------------------
+    // --- Creation page ------------------------------------------------------
     'create.page_title'          => 'StashBin — Nouveau secret',
     'create.logged_in'           => 'Connecté en tant que {user} — {logout}',
     'create.logout'              => 'déconnexion',
@@ -29,14 +29,14 @@ return [
     'create.copy'                => 'Copier',
     'create.another'             => 'Créer un autre secret',
 
-    // --- Durées de vie ------------------------------------------------------
+    // --- Lifetimes ----------------------------------------------------------
     'expire.1h'    => '1 heure',
     'expire.1d'    => '1 jour',
     'expire.1w'    => '1 semaine',
     'expire.1m'    => '1 mois',
     'expire.never' => 'Jamais',
 
-    // --- Page de lecture ----------------------------------------------------
+    // --- Reading page -------------------------------------------------------
     'view.page_title'        => 'StashBin — Secret partagé',
     'view.loading'           => 'Chargement…',
     'view.burn_warning'      => '⚠️ Ce secret sera {emphasis}. Ne continuez que si vous êtes prêt à le lire maintenant.',
@@ -48,7 +48,7 @@ return [
     'view.burned_notice'     => '⚠️ Ce secret vient d\'être détruit : cette page est la seule copie. Il ne sera plus accessible.',
     'view.copy_content'      => 'Copier le contenu',
 
-    // --- Page de connexion --------------------------------------------------
+    // --- Sign-in page -------------------------------------------------------
     'login.page_title'      => 'StashBin — Connexion',
     'login.intro'           => 'Connectez-vous pour créer un secret.',
     'login.username'        => 'Utilisateur',
@@ -57,7 +57,7 @@ return [
     'login.expired'         => 'Session expirée, réessayez.',
     'login.bad_credentials' => 'Identifiants incorrects.',
 
-    // --- Chaînes du JavaScript ----------------------------------------------
+    // --- JavaScript strings -------------------------------------------------
     'js.encrypting'           => 'Chiffrement…',
     'js.decrypting'           => 'Déchiffrement…',
     'js.copied'               => 'Copié ✔',
@@ -69,7 +69,7 @@ return [
     'js.error'                => 'Erreur : {error}',
     'js.server_error'         => 'erreur serveur',
 
-    // --- Messages de l'API --------------------------------------------------
+    // --- API messages -------------------------------------------------------
     'error.invalid_id'         => 'identifiant invalide',
     'error.not_found'          => 'introuvable',
     'error.bad_delete_token'   => 'jeton de suppression invalide',

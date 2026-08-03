@@ -1,6 +1,6 @@
 data/*.sqlite
 data/*.sqlite-*
 
-# Réglages Claude Code propres à chaque poste (permissions accordées localement).
-# .claude/settings.json, lui, a vocation à être partagé s'il vient à exister.
+# Per-machine Claude Code settings (locally granted permissions).
+# .claude/settings.json, by contrast, is meant to be shared if it ever exists.
 .claude/settings.local.json

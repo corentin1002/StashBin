@@ -1,34 +1,34 @@
 <?php
-// Configuration de StashBin. Chaque réglage est une valeur littérale : pour
-// changer quoi que ce soit, écrivez la valeur voulue ici, rien d'autre.
+// StashBin configuration. Every setting is a literal value: to change anything,
+// write the value you want here, and nothing else.
 //
-// Deux réglages acceptent en plus une variable d'environnement, indispensable
-// en conteneur où ce fichier est monté en lecture seule :
+// Three settings also accept an environment variable, which is indispensable in
+// a container where this file is mounted read-only:
 //
-//   STASHBIN_DB      chemin de la base SQLite
-//   STASHBIN_AUTH    « 0 », « false », « off » ou « no » désactivent
-//                    l'authentification ; toute autre valeur l'exige
-//   STASHBIN_LOCALE  langue de repli
+//   STASHBIN_DB      path to the SQLite database
+//   STASHBIN_AUTH    "0", "false", "off" or "no" disable authentication;
+//                    any other value requires it
+//   STASHBIN_LOCALE  fallback language
 //
-// La variable l'emporte sur le fichier quand elle est définie et non vide.
-// Absente, elle ne change rien : c'est ce fichier qui décide.
+// The variable wins over the file when it is set and non-empty. Absent, it
+// changes nothing: this file decides.
 return [
-    // Chemin de la base SQLite (le dossier doit être accessible en écriture par PHP).
+    // Path to the SQLite database (the directory must be writable by PHP).
     'db' => __DIR__ . '/data/stashbin.sqlite',
 
-    // Authentification exigée pour créer et supprimer un secret. C'est le
-    // fonctionnement normal de StashBin.
+    // Authentication required to create and delete a secret. This is how
+    // StashBin normally works.
     //
-    // false ouvre la création à tout visiteur : à ne faire que sur une instance
-    // dont l'accès est déjà restreint autrement (réseau interne, proxy
-    // authentifiant). Tout le reste est inchangé — le chiffrement se fait
-    // toujours dans le navigateur et le serveur ne lit toujours rien.
+    // false opens creation to any visitor: only do this on an instance whose
+    // access is already restricted some other way (internal network,
+    // authenticating proxy). Everything else is unchanged — encryption still
+    // happens in the browser and the server still reads nothing.
     'auth' => true,
 
-    // Taille maximale du payload chiffré accepté (en octets).
+    // Maximum size of the encrypted payload accepted (in bytes).
     'max_size' => 2 * 1024 * 1024,
 
-    // Durées de vie proposées (clé => secondes, null = illimité).
+    // Lifetimes on offer (key => seconds, null = unlimited).
     'expirations' => [
         '1h'    => 3600,
         '1d'    => 86400,
@@ -38,16 +38,16 @@ return [
     ],
     'default_expiration' => '1w',
 
-    // Langue servie quand le navigateur n'en demande aucune de disponible —
-    // l'anglais, faute de mieux, étant plus largement lu que le français.
-    // Les langues offertes sont les fichiers de src/lang/ : en ajouter une,
-    // c'est y déposer un fichier, sans toucher au code.
+    // Language served when the browser requests none that is available —
+    // English, for want of better, being more widely read than French. The
+    // languages on offer are the files in src/lang/: adding one means dropping
+    // a file there, without touching the code.
     //
-    // À ne pas confondre avec src/lang/fr.php, qui reste le fichier de
-    // référence : c'est de lui qu'une traduction incomplète emprunte ses
-    // chaînes manquantes, quelle que soit la valeur réglée ici.
+    // Not to be confused with src/lang/fr.php, which remains the reference
+    // file: it is the one an incomplete translation borrows its missing
+    // strings from, whatever value is set here.
     'default_locale' => 'en',
 
-    // Nom du cookie de session.
+    // Name of the session cookie.
     'session_name' => 'stashbin',
 ];

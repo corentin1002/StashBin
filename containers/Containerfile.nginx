@@ -1,11 +1,11 @@
 # StashBin — nginx + PHP-FPM dans un seul conteneur.
 # Deux processus au lieu d'un, mais une seule commande pour lancer la pile :
-# pour un banc d'essai, ça vaut mieux qu'un pod à deux conteneurs.
+# for a test bench, that beats a two-container pod.
 #
 #   podman build -f containers/Containerfile.nginx \
 #       --build-arg PHP_TAG=8.5-fpm -t stashbin:8.5-nginx containers/
 #
-# En pratique, passez plutôt par containers/stashbin.sh.
+# In practice, go through containers/stashbin.sh instead.
 
 ARG PHP_TAG=8.4-fpm
 FROM docker.io/library/php:${PHP_TAG}
@@ -13,7 +13,7 @@ FROM docker.io/library/php:${PHP_TAG}
 RUN DEBIAN_FRONTEND=noninteractive apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx \
     && rm -rf /var/lib/apt/lists/* \
-    # Le site par défaut de Debian écoute lui aussi sur le port 80.
+    # Debian's default site also listens on port 80.
     && rm -f /etc/nginx/sites-enabled/default
 
 COPY nginx.conf /etc/nginx/conf.d/stashbin.conf

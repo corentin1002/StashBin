@@ -1,60 +1,60 @@
-# Banc d'essai multi-versions
+# Multi-version test bench
 
-Faire tourner StashBin sur n'importe quelle combinaison de **PHP 8.3 / 8.4 / 8.5 / 8.6** et **Apache / nginx**, sans écrire une seule commande `podman`.
+Run StashBin on any combination of **PHP 8.3 / 8.4 / 8.5 / 8.6** and **Apache / nginx**, without typing a single `podman` command.
 
-Tout passe par un script unique : `containers/stashbin.sh`.
+Everything goes through one script: `containers/stashbin.sh`.
 
-## Démarrer
+## Getting started
 
 ```bash
-./containers/stashbin.sh up            # PHP 8.4 + Apache, les valeurs par défaut
-./containers/stashbin.sh up 8.5 nginx  # ou toute autre combinaison
+./containers/stashbin.sh up            # PHP 8.4 + Apache, the defaults
+./containers/stashbin.sh up 8.5 nginx  # or any other combination
 ```
 
-Le script construit l'image si nécessaire, démarre le conteneur, attend que le serveur réponde vraiment, puis affiche l'URL. Il ne rend la main qu'une fois le service joignable — pas de « ça devrait être prêt ».
+The script builds the image if needed, starts the container, waits until the server really answers, then prints the URL. It only hands control back once the service is reachable — no "it should be ready by now".
 
-Ensuite, un compte est nécessaire pour créer des secrets :
+Next, an account is needed to create secrets:
 
 ```bash
-./containers/stashbin.sh user alice    # le mot de passe est demandé
+./containers/stashbin.sh user alice    # the password is prompted for
 ```
 
 → **http://127.0.0.1:8081**
 
-Pour éprouver l'instance ouverte, celle qui ne demande pas de compte :
+To try out the open instance, the one that asks for no account:
 
 ```bash
 AUTH=0 ./containers/stashbin.sh up
 ```
 
-Le script pose `STASHBIN_AUTH=0` dans le conteneur, ce qui surcharge le `'auth' => true` de `config.php` sans y toucher — le dépôt est monté en lecture seule.
+The script sets `STASHBIN_AUTH=0` in the container, which overrides `config.php`'s `'auth' => true` without touching it — the repository is mounted read-only.
 
-## Les six commandes
+## The commands
 
-| Commande | Effet |
+| Command | Effect |
 |---|---|
-| `up [version] [serveur]` | Construit et démarre. Défaut : `8.4 apache` |
-| `user add\|passwd\|del <nom>` | Gère les comptes de l'instance en cours |
-| `user list` | Liste les comptes |
-| `logs [-f]` | Journaux du conteneur |
-| `down` | Arrête l'instance |
-| `reset` | Efface la base (comptes et secrets) |
-| `clean [--all]` | Retire conteneurs, volumes et images du banc d'essai |
-| `list` | Combinaisons disponibles et état actuel |
-| `test [version…]` | Rejoue le parcours complet sur toute la matrice |
+| `up [version] [server]` | Builds and starts. Default: `8.4 apache` |
+| `user add\|passwd\|del <name>` | Manages the accounts of the running instance |
+| `user list` | Lists the accounts |
+| `logs [-f]` | Container logs |
+| `down` | Stops the instance |
+| `reset` | Wipes the database (accounts and secrets) |
+| `clean [--all]` | Removes the bench's containers, volumes and images |
+| `list` | Available combinations and current state |
+| `test [version…]` | Replays the full journey across the whole matrix |
 
-`user` relaie les sous-commandes de `bin/user.php` dans le conteneur, en s'exécutant sous l'identité `www-data`. `user <nom>` sans sous-commande est un raccourci pour `user add <nom>`.
+`user` relays `bin/user.php`'s subcommands into the container, running them under the `www-data` identity. `user <name>` with no subcommand is shorthand for `user add <name>`.
 
-`up` remplace l'instance précédente : une seule tourne à la fois, il n'y a donc jamais à se demander laquelle répond sur quel port.
+`up` replaces the previous instance: only one runs at a time, so there is never any wondering which one answers on which port.
 
-## Tester toute la matrice
+## Testing the whole matrix
 
 ```bash
-./containers/stashbin.sh test          # les 8 combinaisons
-./containers/stashbin.sh test 8.5 8.6  # seulement ces versions
+./containers/stashbin.sh test          # all 8 combinations
+./containers/stashbin.sh test 8.5 8.6  # only those versions
 ```
 
-Pour chaque combinaison, le script construit l'image, démarre la pile et rejoue un parcours réel contre le serveur web — connexion avec jeton CSRF, création d'un secret, relecture, destruction après lecture, rejet d'un identifiant invalide, service des fichiers statiques, et vérification que `config.php` et `src/` ne sont pas exposés hors de `public/`. Il termine par un tableau récapitulatif et sort en erreur si quoi que ce soit échoue.
+For each combination the script builds the image, starts the stack and replays a real journey against the web server — sign-in with a CSRF token, creating a secret, reading it back, burn after reading, rejecting an invalid identifier, serving static files, and checking that `config.php` and `src/` are not exposed outside `public/`. It ends with a summary table and exits with an error if anything fails.
 
 ```
   8.4  apache  OK (8.4.24)
@@ -63,51 +63,53 @@ Pour chaque combinaison, le script construit l'image, démarre la pile et rejoue
   ...
 ```
 
-## Ranger après usage
+The journey matches the API's **error codes**, never its messages: those are translated and follow the caller's `Accept-Language`. Matching `introuvable` there is exactly what broke when the interface became multilingual.
+
+## Tidying up afterwards
 
 ```bash
-./containers/stashbin.sh clean        # conteneurs, volumes et images construites ici
-./containers/stashbin.sh clean --all  # + les images de base php:* téléchargées
+./containers/stashbin.sh clean        # containers, volumes and images built here
+./containers/stashbin.sh clean --all  # + the php:* base images downloaded
 ```
 
-`clean` ne touche que ce que le banc d'essai a fabriqué : les conteneurs `stashbin-test` et `stashbin-selftest`, les volumes `stashbin-test-data` et `stashbin-selftest-data`, et les images `stashbin:<version>-<serveur>`. Un volume ou une image que vous avez créé par ailleurs n'est jamais concerné. La commande annonce chaque suppression réelle et répond « Rien à nettoyer » quand il n'y a rien à faire, donc elle peut se relancer sans risque.
+`clean` only touches what the test bench made: the `stashbin-test` and `stashbin-selftest` containers, the `stashbin-test-data` and `stashbin-selftest-data` volumes, and the `stashbin:<version>-<server>` images. A volume or an image you created elsewhere is never affected. The command announces every real removal and answers "Nothing to clean up" when there is nothing to do, so it can be run again safely.
 
-`--all` ajoute les tags officiels `php:<version>-apache` et `php:<version>-fpm` que le banc télécharge lui-même. Ce n'est pas une opération coûteuse à annuler : podman conserve les couches partagées, et un `up` suivant reconstruit en quelques secondes.
+`--all` adds the official `php:<version>-apache` and `php:<version>-fpm` tags the bench downloads itself. This is not an expensive thing to undo: podman keeps the shared layers, and a subsequent `up` rebuilds in seconds.
 
-## Ce qu'il faut savoir
+## What you need to know
 
-**Le code est monté, pas copié.** Une modification dans `public/` ou `src/` est visible au rechargement de la page, sans reconstruire. Seul un changement dans `containers/` demande un nouveau `up`.
+**The code is mounted, not copied.** A change in `public/` or `src/` shows up on page reload, with no rebuild. Only a change inside `containers/` calls for a new `up`.
 
-**La base survit aux changements de version.** Le volume `stashbin-test-data` est partagé : passer de 8.4 à 8.6 conserve les comptes et les secrets, ce qui permet de tester une montée de version sur des données existantes. `reset` repart de zéro.
+**The database survives version changes.** The `stashbin-test-data` volume is shared: moving from 8.4 to 8.6 keeps the accounts and the secrets, which is what makes it possible to test an upgrade against existing data. `reset` starts over from scratch.
 
-**Ports.** L'instance interactive écoute sur 8081, la matrice de test sur 8099, uniquement sur `127.0.0.1`. En cas de conflit :
+**Ports.** The interactive instance listens on 8081, the test matrix on 8099, on `127.0.0.1` only. In case of a conflict:
 
 ```bash
 PORT=8082 ./containers/stashbin.sh up
 TEST_PORT=9099 ./containers/stashbin.sh test
 ```
 
-**`AUTH`.** `AUTH=0 ./containers/stashbin.sh up` démarre une instance sans authentification (défaut : `1`). La variable ne concerne que `up` : `test` force l'authentification, puisque le parcours qu'il rejoue commence par une connexion.
+**`AUTH`.** `AUTH=0 ./containers/stashbin.sh up` starts an instance without authentication (default: `1`). The variable only concerns `up`: `test` forces authentication on, since the journey it replays starts with a sign-in.
 
-**PHP 8.6 n'est pas sorti** (finale prévue le 19 novembre 2026) : `up 8.6` utilise l'image `php:8.6-rc`. Le script fait la traduction, il n'y a rien à ajuster.
+**PHP 8.6 is not out** (final expected on 19 November 2026): `up 8.6` uses the `php:8.6-rc` image. The script does the translation, there is nothing to adjust.
 
-## Les deux images
+## The two images
 
-| Fichier | Pile | Base |
+| File | Stack | Base |
 |---|---|---|
-| `Containerfile.apache` | Apache + mod_php, un seul processus | `php:<version>-apache` |
-| `Containerfile.nginx` | nginx + PHP-FPM dans un conteneur | `php:<version>-fpm` |
+| `Containerfile.apache` | Apache + mod_php, a single process | `php:<version>-apache` |
+| `Containerfile.nginx` | nginx + PHP-FPM in one container | `php:<version>-fpm` |
 
-Les deux prennent la version en argument de build (`--build-arg PHP_TAG=…`), servent `public/` comme racine web, et rangent la base SQLite dans `/var/lib/stashbin` (volume), hors du code.
+Both take the version as a build argument (`--build-arg PHP_TAG=…`), serve `public/` as the web root, and put the SQLite database in `/var/lib/stashbin` (a volume), outside the code.
 
-Deux détails valent d'être signalés, parce qu'ils coûtent chacun une heure de débogage quand on les découvre soi-même :
+Two details are worth pointing out, because each costs an hour of debugging when discovered the hard way:
 
-- **Apache est configuré avec `AllowOverride None`.** Sans cela, sur un montage en lecture seule, il tente de lire un `.htaccess`, échoue, et renvoie `403` sur *toutes* les pages avec le message « Server unable to read htaccess file, denying access to be safe ».
-- **Les deux points d'entrée corrigent le propriétaire du volume au démarrage.** Si la base a été créée par root, PHP tourne ensuite en `www-data` et échoue sur `attempt to write a readonly database` — mais seulement au moment de créer un secret, pas à la connexion. C'est aussi pourquoi `stashbin.sh user` s'exécute en `www-data`.
+- **Apache is configured with `AllowOverride None`.** Without it, on a read-only mount, it tries to read a `.htaccess`, fails, and returns `403` on *every* page with the message "Server unable to read htaccess file, denying access to be safe".
+- **Both entrypoints fix the volume's ownership at startup.** If the database was created by root, PHP then runs as `www-data` and fails with `attempt to write a readonly database` — but only when creating a secret, not when signing in. That is also why `stashbin.sh user` runs as `www-data`.
 
-## Construire à la main
+## Building by hand
 
-Si vous préférez vous passer du script :
+If you would rather do without the script:
 
 ```bash
 podman build -f containers/Containerfile.nginx \
@@ -122,4 +124,4 @@ podman exec -it -u www-data stashbin \
     php /var/www/stashbin/bin/user.php add alice
 ```
 
-Le contexte de build est `containers/` (et non la racine) : les images ne contiennent que la configuration du serveur, jamais le code applicatif.
+The build context is `containers/` (not the repository root): the images contain nothing but the server configuration, never the application code.

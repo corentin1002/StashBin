@@ -6,9 +6,9 @@ security_headers();
 vary_language();
 $user = require_login();
 
-// Avant la moindre sortie : csrf_token() ouvre la session, et session_start()
-// ne peut plus poser son cookie une fois l'en-tête HTML écrit. Sans
-// authentification, plus rien d'autre n'ouvre la session en amont.
+// Before any output at all: csrf_token() opens the session, and session_start()
+// can no longer set its cookie once the HTML header has been written. Without
+// authentication, nothing else opens the session beforehand.
 $csrf = csrf_token();
 
 $expirations = config()['expirations'];
