@@ -4,6 +4,12 @@ require dirname(__DIR__) . '/src/bootstrap.php';
 
 security_headers();
 $user = require_login();
+
+// Avant la moindre sortie : csrf_token() ouvre la session, et session_start()
+// ne peut plus poser son cookie une fois l'en-tête HTML écrit. Sans
+// authentification, plus rien d'autre n'ouvre la session en amont.
+$csrf = csrf_token();
+
 $expirations = config()['expirations'];
 $labels = ['1h' => '1 heure', '1d' => '1 jour', '1w' => '1 semaine', '1m' => '1 mois', 'never' => 'Jamais'];
 ?>
@@ -14,13 +20,17 @@ $labels = ['1h' => '1 heure', '1d' => '1 jour', '1w' => '1 semaine', '1m' => '1 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>StashBin — Nouveau secret</title>
 <link rel="stylesheet" href="assets/style.css">
-<meta name="csrf-token" content="<?= e(csrf_token()) ?>">
+<meta name="csrf-token" content="<?= e($csrf) ?>">
 </head>
 <body>
 <main>
   <header>
     <h1>🔐 StashBin</h1>
+    <?php if ($user !== null): ?>
     <p class="muted">Connecté en tant que <strong><?= e($user['username']) ?></strong> — <a href="logout.php">déconnexion</a></p>
+    <?php else: ?>
+    <p class="muted">Authentification désactivée : quiconque atteint cette page peut créer un secret.</p>
+    <?php endif; ?>
   </header>
 
   <form id="create-form">
@@ -57,7 +67,7 @@ $labels = ['1h' => '1 heure', '1d' => '1 jour', '1w' => '1 semaine', '1m' => '1 
         <button type="button" class="copy" data-copy="share-link">Copier</button>
       </div>
     </label>
-    <label>Lien de suppression (nécessite d'être connecté)
+    <label>Lien de suppression<?= auth_enabled() ? ' (nécessite d\'être connecté)' : '' ?>
       <div class="copy-row">
         <input type="text" id="delete-link" readonly>
         <button type="button" class="copy" data-copy="delete-link">Copier</button>

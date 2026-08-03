@@ -1,6 +1,6 @@
 # 🔐 StashBin
 
-> Partage de secrets chiffrés de bout en bout — la création est réservée aux utilisateurs autorisés, la lecture est ouverte à quiconque possède le lien.
+> Partage de secrets chiffrés de bout en bout — la création est réservée aux utilisateurs autorisés (ou ouverte à tous, au choix), la lecture est ouverte à quiconque possède le lien.
 
 Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une différence clé : **seuls les comptes authentifiés peuvent créer des secrets**. Il ne s'agit pas d'un fork : le code est une réécriture complète et indépendante, sans aucune ligne reprise du projet d'origine. Aucun framework, aucune dépendance Composer — du PHP, SQLite et le WebCrypto du navigateur.
 
@@ -9,7 +9,7 @@ Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une dif
 ## ✨ Fonctionnalités
 
 - **Chiffrement de bout en bout** — le texte est chiffré dans le navigateur (AES-256-GCM) ; le serveur ne stocke que du chiffré et ne peut jamais lire les secrets.
-- **Création authentifiée** — comptes utilisateurs gérés en CLI ; sans compte, impossible de créer un secret.
+- **Création authentifiée** — comptes utilisateurs gérés en CLI ; sans compte, impossible de créer un secret. Désactivable d'une ligne (`'auth' => false`) pour une instance ouverte, quand l'accès est déjà restreint autrement.
 - **Lecture par lien** — la clé de déchiffrement voyage dans le fragment `#` de l'URL, jamais envoyé au serveur.
 - **Mot de passe optionnel** — mélangé à la clé lors de la dérivation (PBKDF2-SHA256, 310 000 itérations) ; sans lui, le lien seul ne suffit pas.
 - **Expiration** — de 1 heure à jamais, purge automatique.
@@ -64,17 +64,18 @@ Le code est monté depuis le projet : toute modification est visible immédiatem
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 114 tests, quelques minutes
+./tests/run.sh          # 140 tests, quelques minutes
 ./tests/run.sh --help   # options : version, serveur, matrice complète…
 ```
 
-Le lanceur démarre une instance neuve, joue les quatre suites et détruit tout : rien à préparer, rien à nettoyer. Le code de sortie vaut `0` si et seulement si tout passe.
+Le lanceur démarre une instance neuve, joue les cinq suites et détruit tout : rien à préparer, rien à nettoyer. Le code de sortie vaut `0` si et seulement si tout passe.
 
 | Suite | Tests | Portée |
 |---|--:|---|
-| Unitaire | 24 | Fonctions de `src/bootstrap.php` : échappement, configuration, schéma, purge, CSRF |
+| Unitaire | 30 | Fonctions de `src/bootstrap.php` : échappement, configuration, surcharges d'environnement, schéma, purge, CSRF |
 | API | 39 | Règles métier via HTTP : authentification, validation, durées de vie, destruction après lecture, suppression |
-| Sécurité | 21 | Rien hors de `public/`, en-têtes, fixation de session, stockage haché, injections |
+| Sécurité | 22 | Rien hors de `public/`, en-têtes, fixation de session, stockage haché, injections |
+| Instance ouverte | 19 | Second conteneur sans authentification : création libre, CSRF toujours exigée, garanties inchangées |
 | Navigateur | 30 | Chromium réel : cryptographie de bout en bout et parcours d'interface |
 
 Les tests navigateur exercent la partie que rien d'autre ne couvre — `deriveKey`, `encryptText`, `decryptPayload` — et vérifient qu'un chiffré altéré d'un seul bit est rejeté. L'ensemble a été éprouvé par mutation : douze régressions introduites volontairement dans le code, douze détectées. Voir [`tests/README.md`](tests/README.md).
@@ -179,12 +180,40 @@ En conteneur, les mêmes sous-commandes passent par le script du banc d'essai, q
 
 ## ⚙️ Configuration
 
-Tout se passe dans `config.php` : durées d'expiration proposées, taille maximale des secrets (2 Mo par défaut), chemin de la base. En conteneur, la variable d'environnement `STASHBIN_DB` surcharge le chemin de la base.
+Tout se passe dans `config.php`, qui ne contient que des valeurs littérales : écrivez celle que vous voulez, il n'y a rien d'autre à faire.
+
+| Réglage | Défaut | Effet |
+|---|---|---|
+| `db` | `data/stashbin.sqlite` | Chemin de la base SQLite |
+| `auth` | `true` | Authentification exigée pour créer et supprimer |
+| `max_size` | 2 Mio | Taille maximale du payload chiffré |
+| `expirations` / `default_expiration` | 1 h → jamais, `1w` | Durées de vie proposées |
+| `session_name` | `stashbin` | Nom du cookie de session |
+
+Deux d'entre eux acceptent en plus une variable d'environnement, indispensable en conteneur où le fichier est monté en lecture seule : `STASHBIN_DB` pour le chemin de la base, `STASHBIN_AUTH` pour l'authentification. La variable l'emporte sur le fichier quand elle est définie et non vide ; absente, elle ne change rien.
+
+### Instance ouverte, sans authentification
+
+```php
+'auth' => false,        // dans config.php
+```
+
+```bash
+STASHBIN_AUTH=0 …                     # ou par l'environnement
+AUTH=0 ./containers/stashbin.sh up    # ou sur le banc d'essai
+```
+
+La création et la suppression deviennent alors accessibles à tout visiteur : plus de comptes, plus de page de connexion, `login.php` renvoie vers la page de création et le lien de suppression n'exige plus que son jeton.
+
+> **⚠️ Ne le faites que si l'accès à l'instance est déjà restreint autrement** — réseau interne, VPN, proxy authentifiant. Sur l'Internet public, c'est un dépôt de secrets ouvert à l'écriture par n'importe qui.
+
+Tout le reste est inchangé : le chiffrement se fait toujours dans le navigateur, le serveur ne lit toujours rien, le jeton de suppression reste stocké haché, la protection CSRF et les en-têtes de durcissement restent en place. Ces garanties sont vérifiées séparément sur une instance ouverte par la suite `tests/noauth.test.php`.
 
 ## 🗂 Structure
 
 ```
-config.php          réglages (expirations, taille max, chemin de la base)
+config.php          réglages (authentification, expirations, taille max,
+                    chemin de la base)
 containers/         banc d'essai multi-versions (voir containers/README.md)
 ├── stashbin.sh     pilote unique : up, user, logs, down, reset, clean,
 │                   list, test
@@ -203,6 +232,7 @@ tests/              jeu de test complet (voir son README)
 ├── unit.test.php   fonctions de src/bootstrap.php
 ├── api.test.php    règles métier de l'API
 ├── security.test.php  garanties de sécurité
+├── noauth.test.php    comportement de l'instance ouverte
 ├── browser.test.mjs   cryptographie et parcours, dans Chromium
 └── lib.php         assertions et client HTTP, sans dépendance
 src/bootstrap.php   base de données, sessions, CSRF, helpers
@@ -217,6 +247,7 @@ data/               base SQLite (créée automatiquement)
 - Le serveur ne voit **jamais** le contenu en clair, la clé, ni le mot de passe optionnel.
 - Créer un secret exige un compte ; lire n'exige que le lien (+ mot de passe éventuel).
 - Supprimer exige d'être connecté **et** de posséder le jeton remis au créateur.
+- Ces deux dernières règles tombent — et seulement elles — si l'exploitant met `'auth' => false` : c'est un choix explicite, jamais le défaut livré.
 - Sessions `HttpOnly`/`SameSite`, jetons CSRF, CSP stricte, mots de passe hachés (`password_hash`).
 - Ce que le serveur peut faire s'il est compromis : supprimer des secrets, servir du JavaScript malveillant aux futurs visiteurs. C'est la même limite que PrivateBin — l'intégrité du serveur reste importante.
 

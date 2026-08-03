@@ -26,8 +26,9 @@ if ($method === 'GET') {
 
     // Suppression via le jeton du créateur — réservée aux utilisateurs
     // authentifiés : un lien de suppression qui fuite est inutilisable seul.
+    // Sans authentification, le jeton redevient le seul justificatif.
     if (isset($_GET['delete'])) {
-        if (current_user() === null) {
+        if (!is_authorized()) {
             header('Location: login.php');
             exit;
         }
@@ -53,11 +54,13 @@ if ($method === 'GET') {
     ]);
 }
 
-// --- Création (authentifiée) ------------------------------------------------
+// --- Création (authentifiée, sauf configuration contraire) ------------------
 if ($method === 'POST') {
-    if (current_user() === null) {
+    if (!is_authorized()) {
         json_out(401, ['error' => 'authentification requise']);
     }
+    // Le contrôle CSRF ne dépend pas de l'authentification : il empêche un
+    // autre site de faire créer des secrets par le navigateur d'un visiteur.
     if (!check_csrf($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '')) {
         json_out(403, ['error' => 'jeton CSRF invalide']);
     }

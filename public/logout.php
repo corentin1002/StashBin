@@ -5,4 +5,4 @@ require dirname(__DIR__) . '/src/bootstrap.php';
 start_session();
 $_SESSION = [];
 session_destroy();
-header('Location: login.php');
+header('Location: ' . (auth_enabled() ? 'login.php' : 'index.php'));

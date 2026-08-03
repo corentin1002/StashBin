@@ -3,6 +3,14 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/src/bootstrap.php';
 
 security_headers();
+
+// Sans authentification, il n'y a rien à quoi se connecter : pas de formulaire,
+// et pas même de session ouverte au passage.
+if (!auth_enabled()) {
+    header('Location: index.php');
+    exit;
+}
+
 start_session();
 
 if (current_user() !== null) {

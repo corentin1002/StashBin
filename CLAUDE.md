@@ -8,7 +8,7 @@ Ce sont les promesses du produit. Une modification qui en casse une est un bug, 
 
 - **Le serveur ne voit jamais le texte en clair, la clé, ni le mot de passe.** Il stocke un payload opaque et le restitue à l'identique. Aucun déchiffrement côté serveur, jamais.
 - **La clé de déchiffrement vit dans le fragment `#` de l'URL**, qui n'est pas transmis au serveur. Ne la déplacez pas dans la partie interrogeable, ni dans un cookie, ni dans un en-tête.
-- **Créer exige un compte ; lire n'exige que le lien.** Supprimer exige une session ouverte **et** le jeton remis au créateur.
+- **Créer exige un compte ; lire n'exige que le lien.** Supprimer exige une session ouverte **et** le jeton remis au créateur. Unique dérogation, et elle est explicite : `'auth' => false` dans `config.php` (ou `STASHBIN_AUTH=0`) ouvre création et suppression à tout visiteur. Le défaut livré est `true` et doit le rester ; tous les autres invariants tiennent quelle que soit la valeur.
 - **Le jeton de suppression est stocké haché** (SHA-256), jamais en clair.
 - **Le document root est `public/`.** Le reste du dépôt ne doit jamais être servi.
 - **HTTPS est une condition de fonctionnement, pas un durcissement.** `crypto.subtle` n'existe que dans un contexte sécurisé (HTTPS ou origine loopback) : servi en HTTP simple sur un nom d'hôte ordinaire, StashBin ne peut rien chiffrer du tout.
@@ -16,12 +16,13 @@ Ce sont les promesses du produit. Une modification qui en casse une est un bug, 
 ## Commandes
 
 ```bash
-./tests/run.sh                    # 114 tests, quelques minutes — à lancer avant de valider
+./tests/run.sh                    # 140 tests, quelques minutes — à lancer avant de valider
 ./tests/run.sh --no-browser       # sans Chromium, plus rapide pendant l'itération
 ./tests/run.sh --matrix           # suites PHP sur les huit combinaisons version × serveur
 
 ./containers/stashbin.sh up       # instance de développement (PHP 8.4 + Apache)
 ./containers/stashbin.sh up 8.6 nginx
+AUTH=0 ./containers/stashbin.sh up  # instance ouverte, sans authentification
 ./containers/stashbin.sh user add alice
 ./containers/stashbin.sh down
 ./containers/stashbin.sh clean    # tout retirer une fois terminé
@@ -51,7 +52,9 @@ Chacun a coûté du temps une fois ; ils sont documentés pour ne pas le refaire
 ## Organisation
 
 ```
-config.php          expirations, taille max, chemin de la base
+config.php          valeurs littérales : authentification, expirations, taille
+                    max, chemin de la base ; surcharges d'environnement dans
+                    env_overrides() de src/bootstrap.php
 public/             document root — pages, api.php, assets/
   assets/stashbin.js  toute la cryptographie navigateur
 src/bootstrap.php   base, sessions, CSRF, helpers ; tout le code partagé
@@ -69,6 +72,7 @@ Toute modification du comportement doit venir avec un test. Le socle est `tests/
 
 - Une règle métier ou un cas d'erreur → `tests/api.test.php`
 - Une garantie de sécurité → `tests/security.test.php`
+- Un comportement propre à l'instance ouverte → `tests/noauth.test.php`, jouée contre un second conteneur démarré avec `STASHBIN_AUTH=0` (le réglage est lu au démarrage, il n'y a pas de bascule à chaud)
 - Une fonction de `src/bootstrap.php` → `tests/unit.test.php`
 - De la cryptographie ou un parcours d'interface → `tests/browser.test.mjs`
 
