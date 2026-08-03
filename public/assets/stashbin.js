@@ -1,5 +1,26 @@
 'use strict';
 
+// --- Traductions ------------------------------------------------------------
+
+// Les chaînes viennent de la page, où PHP les a posées : la CSP interdit le
+// script inline, et un dictionnaire propre au client finirait par diverger de
+// celui du serveur. L'objet vide couvre les pages qui n'en publient pas.
+const STRINGS = JSON.parse(document.body.dataset.i18n || '{}');
+
+function t(key, vars) {
+  let s = STRINGS[key] !== undefined ? STRINGS[key] : key;
+  for (const name in vars) s = s.split('{' + name + '}').join(vars[name]);
+  return s;
+}
+
+// Erreur d'API. Le code est le contrat stable ; le message, lui, est traduit et
+// ne sert qu'à l'affichage.
+function apiError(data) {
+  const err = new Error(data.error || t('server_error'));
+  err.code = data.code;
+  return err;
+}
+
 // --- Utilitaires ------------------------------------------------------------
 
 const PBKDF2_ITERATIONS = 310000;
@@ -87,7 +108,7 @@ document.addEventListener('click', (ev) => {
   const text = el.tagName === 'INPUT' ? el.value : el.textContent;
   navigator.clipboard.writeText(text).then(() => {
     const old = btn.textContent;
-    btn.textContent = 'Copié ✔';
+    btn.textContent = t('copied');
     setTimeout(() => { btn.textContent = old; }, 1500);
   });
 });
@@ -100,8 +121,9 @@ if (createForm) {
     ev.preventDefault();
     hide('create-error');
     const btn = document.getElementById('submit-btn');
+    const label = btn.textContent;
     btn.disabled = true;
-    btn.textContent = 'Chiffrement…';
+    btn.textContent = t('encrypting');
     try {
       const text = document.getElementById('secret').value;
       const password = document.getElementById('password').value;
@@ -120,7 +142,7 @@ if (createForm) {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'erreur serveur');
+      if (!res.ok) throw apiError(data);
 
       const base = new URL('view.php', window.location.href);
       document.getElementById('share-link').value =
@@ -132,11 +154,11 @@ if (createForm) {
       createForm.classList.add('hidden');
       show('result');
     } catch (err) {
-      setText('create-error', 'Échec de la création : ' + err.message);
+      setText('create-error', t('create_failed', { error: err.message }));
       show('create-error');
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Chiffrer et créer le lien';
+      btn.textContent = label;
     }
   });
 
@@ -158,11 +180,11 @@ if (statusEl && !createForm) {
   const urlKey = window.location.hash.slice(1);
 
   async function fetchAndDecrypt() {
-    setText('status', 'Déchiffrement…');
+    setText('status', t('decrypting'));
     show('status');
     const res = await fetch('api.php?id=' + encodeURIComponent(id));
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'erreur serveur');
+    if (!res.ok) throw apiError(data);
     const payload = data.payload;
 
     const tryDecrypt = async (password) => {
@@ -183,12 +205,12 @@ if (statusEl && !createForm) {
         try {
           await tryDecrypt(document.getElementById('paste-password').value);
         } catch {
-          setText('decrypt-error', 'Mot de passe incorrect.');
+          setText('decrypt-error', t('bad_password'));
           show('decrypt-error');
         }
       });
       if (data.burn) {
-        setText('status', '⚠️ Secret à lecture unique déjà récupéré : cette page est votre seule chance de le déchiffrer.');
+        setText('status', t('burn_already_fetched'));
         show('status');
       }
     } else {
@@ -198,13 +220,13 @@ if (statusEl && !createForm) {
 
   (async () => {
     if (!id || !urlKey) {
-      setText('status', 'Lien invalide : il manque l’identifiant ou la clé de déchiffrement (après le #).');
+      setText('status', t('missing_key'));
       return;
     }
     try {
       const metaRes = await fetch('api.php?id=' + encodeURIComponent(id) + '&meta=1');
       const meta = await metaRes.json();
-      if (!metaRes.ok) throw new Error(meta.error || 'erreur serveur');
+      if (!metaRes.ok) throw apiError(meta);
 
       if (meta.burn) {
         hide('status');
@@ -224,9 +246,9 @@ if (statusEl && !createForm) {
   function showError(err) {
     hide('password-prompt');
     setText('status',
-      err.message === 'introuvable'
-        ? 'Ce secret n’existe pas ou plus (expiré, supprimé, ou déjà lu).'
-        : 'Erreur : ' + err.message);
+      err.code === 'not_found'
+        ? t('not_found')
+        : t('error', { error: err.message }));
     show('status');
   }
 }

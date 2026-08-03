@@ -209,4 +209,52 @@ test('le nom d\'utilisateur est échappé à l\'affichage', function () use ($ba
     db()->prepare('DELETE FROM users WHERE username = ?')->execute([$name]);
 });
 
+// ---------------------------------------------------------------------------
+group('Le choix de la langue n\'ouvre rien');
+
+test('un paramètre « lang » qui est un chemin ne charge aucun fichier', function () use ($http) {
+    foreach (['../config', '/etc/passwd', 'fr/../../config', '../../../../etc/passwd'] as $lang) {
+        $res = $http->get('/index.php?lang=' . rawurlencode($lang));
+        assert_eq(200, $res->status, "« $lang » ne fait pas échouer la page");
+        assert_not_contains('STASHBIN_DB', $res->body, "« $lang » ne divulgue pas la configuration");
+        assert_contains('lang="fr"', $res->body, "« $lang » retombe sur la langue par défaut");
+    }
+});
+
+test('un paramètre « lang » piégé n\'est pas réinjecté brut dans la page', function () use ($http) {
+    // La valeur revient dans l'attribut « lang » et dans les liens que la page
+    // fabrique : elle doit y arriver échappée, ou pas du tout.
+    $res = $http->get('/index.php?lang=' . rawurlencode('"><script>alert(1)</script>'));
+    assert_not_contains('<script>alert(1)', $res->body, 'aucun script injecté');
+});
+
+test('un en-tête Accept-Language hostile ne perturbe pas la page', function () use ($http) {
+    foreach (['<script>alert(1)</script>', '../../etc/passwd', str_repeat('fr,', 500) . 'fr'] as $header) {
+        $res = $http->request('GET', '/index.php', null, ['Accept-Language' => $header]);
+        assert_eq(200, $res->status, 'page servie malgré un en-tête aberrant');
+        assert_not_contains('<script>alert(1)', $res->body, 'aucun script injecté');
+    }
+});
+
+test('les pages annoncent que leur contenu dépend de la langue', function () use ($http) {
+    // Sans « Vary », un cache intermédiaire servirait à tous la langue du
+    // premier visiteur — y compris sur la page de connexion.
+    foreach (['/index.php', '/view.php?id=inexistant', '/api.php?id=' . str_repeat('z', 16)] as $path) {
+        $res = $http->get($path);
+        assert_contains('Accept-Language', (string) $res->header('Vary'), "« $path » pose l'en-tête Vary");
+    }
+});
+
+test('la langue ne change ni le chiffrement ni ce que le serveur conserve', function () use ($http, $token) {
+    // La traduction est de la présentation : elle ne doit toucher à rien de ce
+    // que le produit promet.
+    $payload = ['v' => 1, 'iv' => 'SVYxMjM', 'salt' => 'U0VMMTIz', 'iter' => 310000, 'pwd' => 0, 'ct' => 'Q0lQSEVS'];
+    $id = $http->createSecret(['payload' => $payload], $token)->json()['id'];
+    $got = $http->request('GET', '/api.php?id=' . $id . '&lang=en', null, ['Accept-Language' => 'en'])->json();
+    assert_eq($payload, $got['payload'], 'payload restitué à l\'identique en anglais');
+
+    $stored = db()->query('SELECT payload FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
+    assert_eq($payload, json_decode((string) $stored, true), 'base inchangée');
+});
+
 exit(summary('Régressions de sécurité'));

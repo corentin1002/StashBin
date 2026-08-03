@@ -31,6 +31,11 @@ function env_overrides(array $config): array
         $config['auth'] = !in_array(strtolower($auth), ['0', 'false', 'off', 'no'], true);
     }
 
+    $locale = getenv('STASHBIN_LOCALE');
+    if (is_string($locale) && $locale !== '') {
+        $config['default_locale'] = strtolower($locale);
+    }
+
     return $config;
 }
 
@@ -122,7 +127,7 @@ function require_login(): ?array
     }
     $user = current_user();
     if ($user === null) {
-        header('Location: login.php');
+        header('Location: login.php' . lang_param());
         exit;
     }
     return $user;
@@ -158,7 +163,188 @@ function json_out(int $status, array $data): never
     exit;
 }
 
+// Erreur d'API. Le « code » est stable et constitue le contrat avec le
+// JavaScript ; le « error » qui l'accompagne est traduit, donc destiné à
+// l'affichage et à rien d'autre. Comparer le message reviendrait à faire
+// dépendre le client de la langue du visiteur.
+function json_error(int $status, string $code): never
+{
+    json_out($status, ['error' => t('error.' . $code), 'code' => $code]);
+}
+
 function e(string $s): string
 {
     return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+}
+
+// ---------------------------------------------------------------------------
+// Langue
+// ---------------------------------------------------------------------------
+
+// Langues offertes : un fichier par langue dans src/lang/. En ajouter une, c'est
+// déposer un fichier, sans toucher au code.
+function available_locales(): array
+{
+    static $locales = null;
+    if ($locales === null) {
+        $locales = [];
+        foreach (glob(__DIR__ . '/lang/*.php') ?: [] as $file) {
+            $locales[] = basename($file, '.php');
+        }
+        sort($locales);
+    }
+    return $locales;
+}
+
+// Langue de repli effective. Une valeur de configuration qui ne correspond à
+// aucun fichier donnerait un dictionnaire vide, et l'interface afficherait ses
+// identifiants de clés : mieux vaut servir le français, dont le fichier fait
+// référence et est le seul dont la présence soit garantie.
+function fallback_locale(): string
+{
+    $configured = config()['default_locale'];
+    return in_array($configured, available_locales(), true) ? $configured : 'fr';
+}
+
+// Décompose un en-tête Accept-Language en étiquettes triées par qualité
+// décroissante. Ce qui n'a pas la forme d'une étiquette de langue est ignoré
+// plutôt que de faire échouer la négociation : l'en-tête n'est pas maîtrisé,
+// et « * » lui-même n'a rien à quoi correspondre ici.
+function parse_accept_language(string $header): array
+{
+    $tags = [];
+    foreach (explode(',', $header) as $part) {
+        $bits = explode(';', trim($part));
+        $tag = strtolower(trim($bits[0]));
+        if (!preg_match('/^[a-z]{1,8}(-[a-z0-9]{1,8})*$/', $tag)) {
+            continue;
+        }
+        $q = 1.0;
+        foreach (array_slice($bits, 1) as $param) {
+            if (preg_match('/^\s*q\s*=\s*(\d(?:\.\d+)?)\s*$/i', $param, $m)) {
+                $q = (float) $m[1];
+            }
+        }
+        if ($q <= 0) {
+            continue;
+        }
+        $tags[] = ['tag' => $tag, 'q' => $q];
+    }
+    // usort() est stable depuis PHP 8.0 : à qualité égale, l'ordre de l'en-tête
+    // est conservé, ce qui est exactement la préférence exprimée.
+    usort($tags, static fn(array $a, array $b) => $b['q'] <=> $a['q']);
+    return array_column($tags, 'tag');
+}
+
+// Choisit la langue à servir : paramètre explicite, puis Accept-Language par
+// qualité décroissante, puis repli.
+//
+// Une étiquette régionale retombe sur sa langue — « fr-CA » est servi en
+// « fr » — parce qu'il n'y a pas de variantes régionales à offrir. Fonction
+// pure, et c'est délibéré : c'est le seul moyen d'éprouver la négociation sans
+// fabriquer une requête HTTP par cas.
+function negotiate_locale(?string $header, ?string $override, array $available, string $fallback): string
+{
+    if ($override !== null && in_array($override, $available, true)) {
+        return $override;
+    }
+    foreach (parse_accept_language((string) $header) as $tag) {
+        if (in_array($tag, $available, true)) {
+            return $tag;
+        }
+        $primary = strstr($tag, '-', true);
+        if ($primary !== false && in_array($primary, $available, true)) {
+            return $primary;
+        }
+    }
+    return $fallback;
+}
+
+function locale(): string
+{
+    static $locale = null;
+    if ($locale === null) {
+        $locale = negotiate_locale(
+            $_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? null,
+            isset($_GET['lang']) ? strtolower(trim((string) $_GET['lang'])) : null,
+            available_locales(),
+            fallback_locale(),
+        );
+    }
+    return $locale;
+}
+
+// Le nom de la langue devient un chemin de fichier : il ne se lit que s'il a la
+// forme d'une étiquette. locale() ne renvoie déjà que des valeurs connues, mais
+// cette fonction ne dépend pas de son seul appelant pour rester sûre.
+function load_lang(string $locale): array
+{
+    if (!preg_match('/^[a-z]{1,8}(-[a-z0-9]{1,8})*$/', $locale)) {
+        return [];
+    }
+    $file = __DIR__ . '/lang/' . $locale . '.php';
+    return is_file($file) ? require $file : [];
+}
+
+// Dictionnaire de la langue servie, complété par celui du repli : une clé
+// absente d'une traduction partielle s'affiche dans la langue par défaut plutôt
+// qu'en identifiant brut.
+function strings(): array
+{
+    static $strings = null;
+    if ($strings === null) {
+        $strings = load_lang(locale()) + load_lang(fallback_locale());
+    }
+    return $strings;
+}
+
+// Traduit une clé, en remplaçant les marqueurs {ainsi} par les valeurs données.
+// Le résultat n'est pas échappé : c'est à l'appelant de le faire, comme pour
+// toute autre chaîne posée dans du HTML.
+function t(string $key, array $vars = []): string
+{
+    $s = strings()[$key] ?? $key;
+    foreach ($vars as $name => $value) {
+        $s = str_replace('{' . $name . '}', (string) $value, $s);
+    }
+    return $s;
+}
+
+// Traduit, échappe, puis seulement ensuite substitue des fragments HTML déjà
+// sûrs. L'ordre fait tout : échapper après la substitution neutraliserait les
+// balises qu'on vient d'insérer.
+function t_html(string $key, array $fragments = []): string
+{
+    return strtr(e(t($key)), $fragments);
+}
+
+// Chaînes destinées au JavaScript, publiées dans la page. La CSP interdit le
+// script inline, et un second dictionnaire côté client finirait par diverger
+// du premier : les clés « js. » voyagent donc en attribut de <body>.
+function client_strings(): string
+{
+    $out = [];
+    foreach (strings() as $key => $value) {
+        if (str_starts_with($key, 'js.')) {
+            $out[substr($key, 3)] = $value;
+        }
+    }
+    return json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+}
+
+// Reconduit un choix de langue explicite d'une page à la suivante. Le paramètre
+// est sans état — ni cookie ni session ne le mémorisent — il faut donc le
+// repasser aux URL que l'application fabrique elle-même, sans quoi la première
+// navigation ramènerait la langue du navigateur.
+function lang_param(string $separator = '?'): string
+{
+    return isset($_GET['lang']) ? $separator . 'lang=' . urlencode(locale()) : '';
+}
+
+// Le contenu dépend de la langue demandée : sans cet en-tête, un cache
+// intermédiaire servirait la première réponse reçue à tous les visiteurs
+// suivants, quelle que soit leur langue.
+function vary_language(): void
+{
+    header('Vary: Accept-Language');
 }

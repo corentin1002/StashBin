@@ -255,4 +255,140 @@ test('refuse un jeton dont un seul caractère diffère', function () {
     assert_true(!check_csrf($altered), 'comparaison stricte');
 });
 
+// ---------------------------------------------------------------------------
+group('Langue — lecture d\'Accept-Language');
+
+test('trie les étiquettes par qualité décroissante', function () {
+    assert_eq(
+        ['de', 'en', 'fr'],
+        parse_accept_language('fr;q=0.3, en;q=0.7, de'),
+        'la qualité prime sur l\'ordre d\'écriture'
+    );
+});
+
+test('conserve l\'ordre de l\'en-tête à qualité égale', function () {
+    assert_eq(['en', 'fr', 'de'], parse_accept_language('en, fr, de'), 'préférence implicite respectée');
+});
+
+test('accepte les espaces et la casse', function () {
+    assert_eq(['en-us', 'fr'], parse_accept_language('  EN-US , FR ; Q=0.5 '), 'normalisé en minuscules');
+});
+
+test('écarte une étiquette de qualité nulle', function () {
+    assert_eq(['fr'], parse_accept_language('en;q=0, fr'), 'q=0 signifie « surtout pas »');
+});
+
+test('ignore ce qui n\'a pas la forme d\'une étiquette', function () {
+    assert_eq(['fr'], parse_accept_language('*, <script>, 1;;;, fr'), 'entrées illisibles écartées');
+    assert_eq([], parse_accept_language(''), 'en-tête vide');
+});
+
+// ---------------------------------------------------------------------------
+group('Langue — négociation');
+
+test('retient la première langue disponible', function () {
+    assert_eq('en', negotiate_locale('en;q=0.9, fr;q=0.2', null, ['en', 'fr'], 'fr'), 'anglais préféré');
+    assert_eq('fr', negotiate_locale('fr, en', null, ['en', 'fr'], 'en'), 'français préféré');
+});
+
+test('ramène une étiquette régionale à sa langue', function () {
+    assert_eq('fr', negotiate_locale('fr-CA', null, ['en', 'fr'], 'en'), 'fr-CA servi en fr');
+    assert_eq('en', negotiate_locale('en-GB;q=0.9, de;q=0.8', null, ['en', 'fr'], 'fr'), 'en-GB servi en en');
+});
+
+test('saute les langues qu\'on ne sait pas servir', function () {
+    assert_eq('en', negotiate_locale('de, es, en', null, ['en', 'fr'], 'fr'), 'première langue connue retenue');
+});
+
+test('se replie quand rien ne correspond', function () {
+    assert_eq('fr', negotiate_locale('de, es', null, ['en', 'fr'], 'fr'), 'repli sur la langue par défaut');
+    assert_eq('fr', negotiate_locale(null, null, ['en', 'fr'], 'fr'), 'aucun en-tête du tout');
+});
+
+test('le paramètre explicite l\'emporte sur l\'en-tête', function () {
+    assert_eq('en', negotiate_locale('fr', 'en', ['en', 'fr'], 'fr'), 'choix du visiteur prioritaire');
+});
+
+test('un paramètre explicite inconnu ne fait pas dérailler la négociation', function () {
+    assert_eq('en', negotiate_locale('en', 'klingon', ['en', 'fr'], 'fr'), 'on retombe sur l\'en-tête');
+    assert_eq('fr', negotiate_locale('de', '../fr', ['en', 'fr'], 'fr'), 'aucun chemin ne devient une langue');
+});
+
+// ---------------------------------------------------------------------------
+group('Langue — dictionnaires');
+
+test('le français et l\'anglais sont offerts', function () {
+    assert_true(in_array('fr', available_locales(), true), 'fr présent');
+    assert_true(in_array('en', available_locales(), true), 'en présent');
+});
+
+test('l\'anglais traduit toutes les clés du français', function () {
+    // fr.php fait référence : une clé qui lui manquerait n'aurait aucun repli.
+    $missing = array_diff(array_keys(load_lang('fr')), array_keys(load_lang('en')));
+    assert_eq([], array_values($missing), 'aucune clé non traduite : ' . implode(', ', $missing));
+});
+
+test('aucune traduction ne laisse de marqueur orphelin', function () {
+    // Un {marqueur} présent d'un côté et absent de l'autre afficherait du
+    // texte parasite, ou perdrait la donnée qu'il devait porter.
+    $fr = load_lang('fr');
+    foreach (load_lang('en') as $key => $text) {
+        preg_match_all('/\{(\w+)\}/', $fr[$key] ?? '', $expected);
+        preg_match_all('/\{(\w+)\}/', $text, $actual);
+        sort($expected[1]);
+        sort($actual[1]);
+        assert_eq($expected[1], $actual[1], "marqueurs de « $key »");
+    }
+});
+
+test('un nom de langue qui est un chemin ne lit aucun fichier', function () {
+    // Le nom devient un chemin, et « require » exécute ce qu'il trouve :
+    // « ../../config » désigne le config.php du dépôt, qui serait alors servi
+    // comme un dictionnaire. Aucun appelant ne peut aujourd'hui y conduire —
+    // locale() ne renvoie que des langues effectivement listées — mais la
+    // fonction ne s'en remet pas à son seul appelant pour rester sûre.
+    assert_eq([], load_lang('../../config'), 'remontée jusqu\'à la configuration refusée');
+    assert_eq([], load_lang('fr/../../../config'), 'traversée refusée');
+    assert_eq([], load_lang('inexistante'), 'langue inconnue : dictionnaire vide');
+});
+
+// ---------------------------------------------------------------------------
+group('Langue — traduction');
+
+test('rend la chaîne de la clé demandée', function () {
+    assert_eq('introuvable', t('error.not_found'), 'clé traduite');
+});
+
+test('remplace les marqueurs par les valeurs fournies', function () {
+    assert_eq('Erreur : panne', t('js.error', ['error' => 'panne']), 'marqueur substitué');
+});
+
+test('rend la clé elle-même quand elle n\'existe pas', function () {
+    // Visible sans être fatal : la page reste lisible et le manque saute aux yeux.
+    assert_eq('cle.inexistante', t('cle.inexistante'), 'clé rendue telle quelle');
+});
+
+test('t_html échappe la traduction avant d\'y insérer du HTML', function () {
+    $out = t_html('create.logged_in', [
+        '{user}' => '<strong>alice</strong>',
+        '{logout}' => '<a href="logout.php">sortir</a>',
+    ]);
+    assert_contains('<strong>alice</strong>', $out, 'fragment inséré tel quel');
+    assert_contains('<a href="logout.php">sortir</a>', $out, 'lien inséré tel quel');
+});
+
+test('t_html neutralise le HTML venu de la traduction', function () {
+    // Une traduction est une donnée comme une autre : elle ne doit pas pouvoir
+    // introduire de balise, même déposée par un opérateur distrait.
+    assert_eq('cle.&lt;script&gt;', t_html('cle.<script>'), 'balise échappée');
+});
+
+test('les chaînes publiées au JavaScript sont du JSON sans le préfixe « js. »', function () {
+    $published = json_decode(client_strings(), true);
+    assert_true(is_array($published), 'JSON valide');
+    assert_eq('Chiffrement…', $published['encrypting'] ?? null, 'clé dépouillée de son préfixe');
+    assert_true(!isset($published['js.encrypting']), 'préfixe retiré');
+    assert_true(!isset($published['error.not_found']), 'seules les clés « js. » sont publiées');
+});
+
 exit(summary('Tests unitaires'));

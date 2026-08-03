@@ -113,7 +113,10 @@ async function readSecret(context, link, { password = null, confirmBurn = false 
 // réseau du conteneur applicatif, si bien que l'adresse est 127.0.0.1 : un
 // contexte sûr, sans certificat à fabriquer ni drapeau de contournement.
 const browser = await chromium.launch();
-const context = await browser.newContext({ ignoreHTTPSErrors: true });
+// Langue fixée explicitement : l'interface suit désormais Accept-Language, et
+// la langue par défaut de Chromium varie selon l'image. Les libellés attendus
+// plus bas sont ceux du français.
+const context = await browser.newContext({ ignoreHTTPSErrors: true, locale: 'fr-FR' });
 const page = await context.newPage();
 await login(page);
 
@@ -411,6 +414,70 @@ await test('le créateur peut supprimer son secret par le lien fourni', async ()
   assertTrue((await q.textContent('#status')).includes('n’existe pas ou plus'), 'secret devenu introuvable');
   await q.close();
 });
+
+// ---------------------------------------------------------------------------
+group('Langue de l\'interface');
+
+// Contextes neufs : celui des tests précédents porte une session ouverte, et
+// login.php redirigerait alors vers la page de création.
+const english = await browser.newContext({ ignoreHTTPSErrors: true, locale: 'en-US' });
+const french = await browser.newContext({ ignoreHTTPSErrors: true, locale: 'fr-FR' });
+
+await test('un navigateur anglophone reçoit l\'interface en anglais', async () => {
+  const p = await english.newPage();
+  await p.goto(`${BASE}/login.php`);
+  assertEq('en', await p.getAttribute('html', 'lang'), 'langue déclarée dans la page');
+  assertTrue((await p.textContent('button[type="submit"]')).includes('Sign in'), 'bouton traduit');
+  await p.close();
+});
+
+await test('un navigateur francophone reçoit toujours l\'interface en français', async () => {
+  const p = await french.newPage();
+  await p.goto(`${BASE}/login.php`);
+  assertEq('fr', await p.getAttribute('html', 'lang'), 'langue déclarée dans la page');
+  assertTrue((await p.textContent('button[type="submit"]')).includes('Se connecter'), 'bouton en français');
+  await p.close();
+});
+
+await test('le paramètre « lang » l\'emporte sur la langue du navigateur', async () => {
+  const p = await english.newPage();
+  await p.goto(`${BASE}/login.php?lang=fr`);
+  assertEq('fr', await p.getAttribute('html', 'lang'), 'choix explicite retenu');
+  await p.close();
+});
+
+await test('les messages produits par le JavaScript sont traduits eux aussi', async () => {
+  // Le dictionnaire du client vient de la page : c'est ce chemin-là qu'on
+  // vérifie, et non un second jeu de chaînes embarqué dans le script.
+  const p = await english.newPage();
+  await p.goto(`${BASE}/view.php?id=${'z'.repeat(16)}#cle`);
+  await p.waitForFunction(() => !document.getElementById('status').textContent.includes('Loading'), null, { timeout: 20000 });
+  const status = await p.textContent('#status');
+  assertTrue(status.includes('does not exist any more'), `message en anglais (obtenu : ${status})`);
+  await p.close();
+});
+
+await test('le parcours de création fonctionne à l\'identique en anglais', async () => {
+  // La traduction ne doit rien changer au chiffrement : le texte relu doit
+  // être exactement celui saisi.
+  const p = await english.newPage();
+  await p.goto(`${BASE}/login.php`);
+  await p.fill('input[name="username"]', USER);
+  await p.fill('input[name="password"]', PASS);
+  await Promise.all([p.waitForURL('**/index.php'), p.click('button[type="submit"]')]);
+
+  const secret = 'Interface en anglais, secret en français — éàü 🔐';
+  await p.fill('#secret', secret);
+  await p.click('#submit-btn');
+  await p.waitForSelector('#result:not(.hidden)', { timeout: 20000 });
+  const link = await p.inputValue('#share-link');
+  await p.close();
+
+  assertEq(secret, await readSecret(english, link), 'texte restitué à l\'identique');
+});
+
+await french.close();
+await english.close();
 
 await browser.close();
 

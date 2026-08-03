@@ -3,6 +3,7 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/src/bootstrap.php';
 
 security_headers();
+vary_language();
 
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -10,7 +11,7 @@ $method = $_SERVER['REQUEST_METHOD'];
 if ($method === 'GET') {
     $id = $_GET['id'] ?? '';
     if (!preg_match('/^[A-Za-z0-9_-]{8,32}$/', $id)) {
-        json_out(400, ['error' => 'identifiant invalide']);
+        json_error(400, 'invalid_id');
     }
 
     $stmt = db()->prepare('SELECT * FROM pastes WHERE id = ?');
@@ -21,7 +22,7 @@ if ($method === 'GET') {
         if ($paste) {
             db()->prepare('DELETE FROM pastes WHERE id = ?')->execute([$id]);
         }
-        json_out(404, ['error' => 'introuvable']);
+        json_error(404, 'not_found');
     }
 
     // Suppression via le jeton du créateur — réservée aux utilisateurs
@@ -29,11 +30,11 @@ if ($method === 'GET') {
     // Sans authentification, le jeton redevient le seul justificatif.
     if (isset($_GET['delete'])) {
         if (!is_authorized()) {
-            header('Location: login.php');
+            header('Location: login.php' . lang_param());
             exit;
         }
         if (!hash_equals($paste['delete_hash'], hash('sha256', (string) $_GET['delete']))) {
-            json_out(403, ['error' => 'jeton de suppression invalide']);
+            json_error(403, 'bad_delete_token');
         }
         db()->prepare('DELETE FROM pastes WHERE id = ?')->execute([$id]);
         json_out(200, ['deleted' => true]);
@@ -57,21 +58,21 @@ if ($method === 'GET') {
 // --- Création (authentifiée, sauf configuration contraire) ------------------
 if ($method === 'POST') {
     if (!is_authorized()) {
-        json_out(401, ['error' => 'authentification requise']);
+        json_error(401, 'unauthorized');
     }
     // Le contrôle CSRF ne dépend pas de l'authentification : il empêche un
     // autre site de faire créer des secrets par le navigateur d'un visiteur.
     if (!check_csrf($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '')) {
-        json_out(403, ['error' => 'jeton CSRF invalide']);
+        json_error(403, 'bad_csrf');
     }
 
     $raw = file_get_contents('php://input', length: config()['max_size'] + 4096);
     if (strlen($raw) > config()['max_size']) {
-        json_out(413, ['error' => 'contenu trop volumineux']);
+        json_error(413, 'too_large');
     }
     $body = json_decode($raw, true);
     if (!is_array($body) || !isset($body['payload']) || !is_array($body['payload'])) {
-        json_out(400, ['error' => 'requête invalide']);
+        json_error(400, 'bad_request');
     }
 
     // Le payload est opaque pour le serveur (chiffré côté client) ; on vérifie
@@ -79,14 +80,14 @@ if ($method === 'POST') {
     $payload = $body['payload'];
     foreach (['v', 'iv', 'salt', 'iter', 'pwd', 'ct'] as $field) {
         if (!array_key_exists($field, $payload)) {
-            json_out(400, ['error' => 'payload incomplet']);
+            json_error(400, 'incomplete_payload');
         }
     }
 
     $expirations = config()['expirations'];
     $expireKey = $body['expire'] ?? config()['default_expiration'];
     if (!array_key_exists($expireKey, $expirations)) {
-        json_out(400, ['error' => 'durée de vie inconnue']);
+        json_error(400, 'unknown_expiration');
     }
     $expires = $expirations[$expireKey] === null ? null : time() + $expirations[$expireKey];
 
@@ -110,4 +111,4 @@ if ($method === 'POST') {
     json_out(201, ['id' => $id, 'delete_token' => $deleteToken]);
 }
 
-json_out(405, ['error' => 'méthode non autorisée']);
+json_error(405, 'method_not_allowed');

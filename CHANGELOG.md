@@ -20,7 +20,9 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 - Lien de suppression remis au créateur.
 - Gestion des comptes en ligne de commande (`bin/user.php` : `add`, `passwd`, `del`, `list`).
 - Stockage SQLite sans dépendance externe, schéma créé automatiquement.
-- Interface en français, thème clair/sombre automatique.
+- Interface multilingue : français et anglais, choisis d'après l'en-tête `Accept-Language` du navigateur, avec repli sur `default_locale` (`fr` par défaut, surchargeable par `STASHBIN_LOCALE`). Une étiquette régionale retombe sur sa langue (`fr-CA` → `fr`). Le paramètre `?lang=` force la langue d'une page, sans cookie ni session. Ajouter une langue consiste à déposer un fichier dans `src/lang/` : le code liste ce dossier, et une traduction incomplète emprunte ses clés manquantes à la langue de repli. Les réponses portent `Vary: Accept-Language`.
+- Les erreurs de l'API portent désormais un champ `code` stable (`not_found`, `unauthorized`, `bad_csrf`…) à côté du message, qui est traduit : le JavaScript compare le code, jamais le texte.
+- Thème clair/sombre automatique, suivant les préférences du système.
 - Banc d'essai `containers/` : images Apache + mod_php et nginx + PHP-FPM, paramétrées par version de PHP (8.3 à 8.6), avec le code monté en lecture seule et la base SQLite dans un volume dédié (chemin surchargeable via `STASHBIN_DB`).
 - `containers/stashbin.sh` : pilote unique du banc d'essai (`up`, `user`, `logs`, `down`, `reset`, `clean`, `list`, `test`). `clean` retire conteneurs, volumes et images produits par le banc — et rien d'autre ; `clean --all` y ajoute les images de base `php:*` téléchargées. `user` relaie les sous-commandes de `bin/user.php` (`add`, `passwd`, `del`, `list`) dans le conteneur, sous l'identité `www-data`. `test` rejoue le parcours applicatif complet sur les huit combinaisons version × serveur et échoue si l'une d'elles régresse.
 - Compatibilité vérifiée de PHP 8.1 à 8.6 (8.6 en release candidate), sous Apache comme sous nginx : aucune dépréciation ni avertissement.
