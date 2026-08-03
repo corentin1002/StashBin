@@ -2,7 +2,7 @@
 
 > Partage de secrets chiffrés de bout en bout — la création est réservée aux utilisateurs autorisés, la lecture est ouverte à quiconque possède le lien.
 
-Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une différence clé : **seuls les comptes authentifiés peuvent créer des secrets**. Aucun framework, aucune dépendance Composer — du PHP, SQLite et le WebCrypto du navigateur.
+Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une différence clé : **seuls les comptes authentifiés peuvent créer des secrets**. Il ne s'agit pas d'un fork : le code est une réécriture complète et indépendante, sans aucune ligne reprise du projet d'origine. Aucun framework, aucune dépendance Composer — du PHP, SQLite et le WebCrypto du navigateur.
 
 ---
 
@@ -156,3 +156,8 @@ data/               base SQLite (créée automatiquement)
 ## 📄 Licence
 
 Distribué sous licence [MIT](LICENSE).
+
+StashBin est une implémentation indépendante, écrite à partir de zéro. Le projet
+[PrivateBin](https://github.com/PrivateBin/PrivateBin) (licence zlib/libpng) en a
+inspiré le concept et le modèle de sécurité, mais aucun code n'en est issu : la
+mention ci-dessus est un remerciement, pas une obligation de licence.
