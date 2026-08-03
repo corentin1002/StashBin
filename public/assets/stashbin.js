@@ -1,10 +1,10 @@
 'use strict';
 
-// --- Traductions ------------------------------------------------------------
+// --- Translations -----------------------------------------------------------
 
-// Les chaînes viennent de la page, où PHP les a posées : la CSP interdit le
-// script inline, et un dictionnaire propre au client finirait par diverger de
-// celui du serveur. L'objet vide couvre les pages qui n'en publient pas.
+// The strings come from the page, where PHP put them: the CSP forbids inline
+// script, and a client-owned dictionary would end up diverging from the
+// server's. The empty object covers pages that publish none.
 const STRINGS = JSON.parse(document.body.dataset.i18n || '{}');
 
 function t(key, vars) {
@@ -13,15 +13,15 @@ function t(key, vars) {
   return s;
 }
 
-// Erreur d'API. Le code est le contrat stable ; le message, lui, est traduit et
-// ne sert qu'à l'affichage.
+// An API error. The code is the stable contract; the message is translated and
+// serves display only.
 function apiError(data) {
   const err = new Error(data.error || t('server_error'));
   err.code = data.code;
   return err;
 }
 
-// --- Utilitaires ------------------------------------------------------------
+// --- Utilities --------------------------------------------------------------
 
 const PBKDF2_ITERATIONS = 310000;
 
@@ -42,8 +42,8 @@ function b64decode(str) {
   return bytes;
 }
 
-// Dérive la clé AES à partir de la clé d'URL et du mot de passe optionnel.
-// Le serveur ne voit ni l'un ni l'autre.
+// Derives the AES key from the URL key and the optional password. The server
+// sees neither.
 async function deriveKey(urlKeyBytes, password, salt, iterations) {
   const passwordBytes = new TextEncoder().encode(password || '');
   const material = new Uint8Array(urlKeyBytes.length + passwordBytes.length);
@@ -113,7 +113,7 @@ document.addEventListener('click', (ev) => {
   });
 });
 
-// --- Page de création -------------------------------------------------------
+// --- Creation page ----------------------------------------------------------
 
 const createForm = document.getElementById('create-form');
 if (createForm) {
@@ -171,7 +171,7 @@ if (createForm) {
   });
 }
 
-// --- Page de lecture --------------------------------------------------------
+// --- Reading page -----------------------------------------------------------
 
 const statusEl = document.getElementById('status');
 if (statusEl && !createForm) {

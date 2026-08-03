@@ -1,11 +1,11 @@
 <?php
-// Comportement de l'instance ouverte, c'est-à-dire configurée avec « auth »
-// à false. Cette suite exige un serveur démarré avec STASHBIN_AUTH=0 : le
-// réglage est lu au démarrage, il n'y a pas de bascule à chaud.
+// Behaviour of the open instance, that is, one configured with "auth" set to
+// false. This suite requires a server started with STASHBIN_AUTH=0: the
+// setting is read at startup, there is no hot switch.
 //
-// Ce qui est vérifié ici tient en une phrase : l'authentification tombe, et
-// rien d'autre. Le chiffrement, la CSRF, le hachage du jeton de suppression
-// et la lecture publique restent exactement ce qu'ils sont.
+// What is checked here fits in one sentence: authentication falls away, and
+// nothing else. Encryption, CSRF, the hashing of the deletion token and public
+// reading all stay exactly what they are.
 declare(strict_types=1);
 
 require __DIR__ . '/lib.php';
@@ -14,147 +14,147 @@ require dirname(__DIR__) . '/src/bootstrap.php';
 $base = getenv('STASHBIN_URL') ?: 'http://127.0.0.1';
 
 if (auth_enabled()) {
-    fwrite(STDERR, "Cette suite exige une instance sans authentification (STASHBIN_AUTH=0).\n");
+    fwrite(STDERR, "This suite requires an instance without authentication (STASHBIN_AUTH=0).\n");
     exit(2);
 }
 
-// Aucun appel à login() : il n'y a plus de formulaire de connexion. Le client
-// n'obtient qu'un cookie de session, porteur du seul jeton CSRF.
+// No call to login(): there is no sign-in form any more. The client only gets
+// a session cookie, carrying nothing but the CSRF token.
 $http = new Http($base);
 $token = $http->csrfToken();
 
 // ---------------------------------------------------------------------------
-group('Création sans compte');
+group('Creation without an account');
 
-test('la page de création est servie sans session', function () use ($base) {
+test('the creation page is served without a session', function () use ($base) {
     $anon = new Http($base);
-    assert_eq(200, $anon->get('/index.php')->status, 'aucune redirection vers la connexion');
+    assert_eq(200, $anon->get('/index.php')->status, 'no redirect to sign-in');
 });
 
-test('la page de création annonce que l\'authentification est désactivée', function () use ($base) {
+test('the creation page announces that authentication is disabled', function () use ($base) {
     $page = (new Http($base))->get('/index.php')->body;
-    assert_contains('Authentification désactivée', $page, 'avertissement affiché');
-    assert_not_contains('Connecté en tant que', $page, 'aucun utilisateur nommé');
-    assert_not_contains('logout.php', $page, 'aucun lien de déconnexion');
+    assert_contains('Authentification désactivée', $page, 'warning shown');
+    assert_not_contains('Connecté en tant que', $page, 'no user named');
+    assert_not_contains('logout.php', $page, 'no sign-out link');
 });
 
-test('un visiteur anonyme peut créer un secret (201)', function () use ($http, $token) {
+test('an anonymous visitor can create a secret (201)', function () use ($http, $token) {
     $res = $http->createSecret([], $token);
-    assert_eq(201, $res->status, 'création acceptée sans compte');
-    assert_matches('/^[A-Za-z0-9_-]{16}$/', $res->json()['id'], 'identifiant renvoyé');
+    assert_eq(201, $res->status, 'creation accepted without an account');
+    assert_matches('/^[A-Za-z0-9_-]{16}$/', $res->json()['id'], 'identifier returned');
 });
 
-test('le jeton CSRF reste exigé (403)', function () use ($http) {
-    // La CSRF ne protège pas l'authentification mais le navigateur du visiteur :
-    // elle n'a aucune raison de tomber avec les comptes.
+test('the CSRF token is still required (403)', function () use ($http) {
+    // CSRF does not protect authentication but the visitor's browser: it has
+    // no reason to fall away with the accounts.
     $res = $http->post('/api.php', json_encode(['payload' => []]), ['Content-Type' => 'application/json']);
-    assert_eq(403, $res->status, 'création refusée sans jeton');
+    assert_eq(403, $res->status, 'creation refused without a token');
 });
 
-test('un jeton CSRF erroné reste refusé (403)', function () use ($http) {
-    assert_eq(403, $http->createSecret([], str_repeat('0', 64))->status, 'jeton invalide rejeté');
+test('a wrong CSRF token is still refused (403)', function () use ($http) {
+    assert_eq(403, $http->createSecret([], str_repeat('0', 64))->status, 'invalid token rejected');
 });
 
-test('la validation du payload est inchangée (400)', function () use ($http, $token) {
+test('payload validation is unchanged (400)', function () use ($http, $token) {
     $res = $http->createSecret(['payload' => ['v' => 1, 'iv' => 'A']], $token);
-    assert_eq(400, $res->status, 'payload incomplet toujours rejeté');
-    assert_eq('incomplete_payload', $res->json()['code'], 'même code qu\'avec authentification');
+    assert_eq(400, $res->status, 'incomplete payload still rejected');
+    assert_eq('incomplete_payload', $res->json()['code'], 'same code as with authentication');
 });
 
 // ---------------------------------------------------------------------------
-group('Pages de connexion neutralisées');
+group('Sign-in pages neutralised');
 
-test('login.php renvoie vers la page de création', function () use ($base) {
+test('login.php redirects to the creation page', function () use ($base) {
     $res = (new Http($base))->get('/login.php');
-    assert_eq(302, $res->status, 'redirection');
-    assert_contains('index.php', (string) $res->header('Location'), 'vers la création');
-    assert_not_contains('Se connecter', $res->body, 'aucun formulaire servi');
+    assert_eq(302, $res->status, 'redirect');
+    assert_contains('index.php', (string) $res->header('Location'), 'towards creation');
+    assert_not_contains('Se connecter', $res->body, 'no form served');
 });
 
-test('login.php n\'ouvre même pas de session', function () use ($base) {
-    // Rien à protéger, rien à mémoriser : inutile de poser un cookie.
+test('login.php does not even open a session', function () use ($base) {
+    // Nothing to protect, nothing to remember: no point setting a cookie.
     $res = (new Http($base))->get('/login.php');
-    assert_eq([], $res->headerAll('Set-Cookie'), 'aucun cookie émis');
+    assert_eq([], $res->headerAll('Set-Cookie'), 'no cookie issued');
 });
 
-test('logout.php renvoie vers la page de création', function () use ($base) {
+test('logout.php redirects to the creation page', function () use ($base) {
     $res = (new Http($base))->get('/logout.php');
-    assert_eq(302, $res->status, 'redirection');
-    assert_contains('index.php', (string) $res->header('Location'), 'pas vers login.php');
+    assert_eq(302, $res->status, 'redirect');
+    assert_contains('index.php', (string) $res->header('Location'), 'not towards login.php');
 });
 
 // ---------------------------------------------------------------------------
-group('Suppression par le seul jeton');
+group('Deletion by the token alone');
 
-test('le jeton de suppression suffit, sans session', function () use ($http, $token, $base) {
+test('the deletion token is enough, with no session', function () use ($http, $token, $base) {
     $d = $http->createSecret([], $token)->json();
     $anon = new Http($base);
     $res = $anon->get('/api.php?id=' . $d['id'] . '&delete=' . $d['delete_token']);
-    assert_eq(200, $res->status, 'suppression acceptée');
-    assert_eq(true, $res->json()['deleted'], 'confirmation renvoyée');
-    assert_eq(404, $http->get('/api.php?id=' . $d['id'])->status, 'secret réellement supprimé');
+    assert_eq(200, $res->status, 'deletion accepted');
+    assert_eq(true, $res->json()['deleted'], 'confirmation returned');
+    assert_eq(404, $http->get('/api.php?id=' . $d['id'])->status, 'secret really deleted');
 });
 
-test('un jeton erroné reste refusé (403) et le secret survit', function () use ($http, $token) {
+test('a wrong token is still refused (403) and the secret survives', function () use ($http, $token) {
     $d = $http->createSecret([], $token)->json();
     $res = $http->get('/api.php?id=' . $d['id'] . '&delete=' . str_repeat('x', 24));
-    assert_eq(403, $res->status, 'jeton de suppression invalide');
+    assert_eq(403, $res->status, 'invalid deletion token');
     assert_eq(200, $http->get('/api.php?id=' . $d['id'])->status, 'secret intact');
 });
 
 // ---------------------------------------------------------------------------
-group('Ce que l\'ouverture ne change pas');
+group('What opening up does not change');
 
-test('la configuration signale l\'authentification désactivée', function () {
-    assert_eq(false, config()['auth'], 'clé « auth » à false');
-    assert_true(!auth_enabled(), 'auth_enabled() suit la configuration');
+test('the configuration reports authentication as disabled', function () {
+    assert_eq(false, config()['auth'], '"auth" key set to false');
+    assert_true(!auth_enabled(), 'auth_enabled() follows the configuration');
 });
 
-test('la lecture reste ouverte à quiconque possède le lien', function () use ($http, $token, $base) {
+test('reading stays open to anyone holding the link', function () use ($http, $token, $base) {
     $id = $http->createSecret([], $token)->json()['id'];
-    assert_eq(200, (new Http($base))->get('/api.php?id=' . $id)->status, 'lecture publique');
+    assert_eq(200, (new Http($base))->get('/api.php?id=' . $id)->status, 'public reading');
 });
 
-test('le serveur ne déchiffre toujours rien', function () use ($http, $token) {
-    $marker = 'TEXTEENCLAIRQUINEDOITJAMAISAPPARAITRE';
+test('the server still decrypts nothing', function () use ($http, $token) {
+    $marker = 'PLAINTEXTTHATMUSTNEVERAPPEAR';
     $payload = ['v' => 1, 'iv' => 'AAAA', 'salt' => 'BBBB', 'iter' => 310000, 'pwd' => 0,
                 'ct' => base64_encode($marker)];
     $id = $http->createSecret(['payload' => $payload], $token)->json()['id'];
     $stored = db()->query('SELECT payload FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
-    assert_eq($payload, json_decode((string) $stored, true), 'payload conservé sans transformation');
-    assert_not_contains($marker, (string) $stored, 'aucun déchiffrement côté serveur');
+    assert_eq($payload, json_decode((string) $stored, true), 'payload kept without transformation');
+    assert_not_contains($marker, (string) $stored, 'no server-side decryption');
 });
 
-test('le jeton de suppression reste stocké haché', function () use ($http, $token) {
+test('the deletion token is still stored hashed', function () use ($http, $token) {
     $d = $http->createSecret([], $token)->json();
     $stored = db()->query('SELECT delete_hash FROM pastes WHERE id = ' . db()->quote($d['id']))->fetchColumn();
-    assert_true($stored !== $d['delete_token'], 'le jeton brut n\'est pas en base');
-    assert_eq(hash('sha256', $d['delete_token']), $stored, 'empreinte SHA-256 enregistrée');
+    assert_true($stored !== $d['delete_token'], 'the raw token is not in the database');
+    assert_eq(hash('sha256', $d['delete_token']), $stored, 'SHA-256 digest recorded');
 });
 
-test('les secrets à lecture unique disparaissent toujours après lecture', function () use ($http, $token) {
+test('read-once secrets still disappear after reading', function () use ($http, $token) {
     $id = $http->createSecret(['burn' => true], $token)->json()['id'];
-    assert_eq(200, $http->get('/api.php?id=' . $id)->status, 'première lecture servie');
-    assert_eq(404, $http->get('/api.php?id=' . $id)->status, 'seconde lecture impossible');
+    assert_eq(200, $http->get('/api.php?id=' . $id)->status, 'first read served');
+    assert_eq(404, $http->get('/api.php?id=' . $id)->status, 'second read impossible');
 });
 
-test('les en-têtes de durcissement sont toujours posés', function () use ($base) {
+test('the hardening headers are still set', function () use ($base) {
     $res = (new Http($base))->get('/index.php');
-    assert_contains("default-src 'none'", (string) $res->header('Content-Security-Policy'), 'CSP stricte');
-    assert_eq('nosniff', $res->header('X-Content-Type-Options'), 'pas de reniflage de type');
-    assert_eq('no-referrer', $res->header('Referrer-Policy'), 'aucun référent transmis');
+    assert_contains("default-src 'none'", (string) $res->header('Content-Security-Policy'), 'strict CSP');
+    assert_eq('nosniff', $res->header('X-Content-Type-Options'), 'no type sniffing');
+    assert_eq('no-referrer', $res->header('Referrer-Policy'), 'no referrer sent');
 });
 
-test('le cookie de session reste HttpOnly et SameSite', function () use ($base) {
-    // Il ne porte plus d'identité, mais il porte le jeton CSRF.
+test('the session cookie stays HttpOnly and SameSite', function () use ($base) {
+    // It no longer carries an identity, but it carries the CSRF token.
     $c = implode(' ', (new Http($base))->get('/index.php')->headerAll('Set-Cookie'));
-    assert_contains('HttpOnly', $c, 'inaccessible au JavaScript');
-    assert_contains('SameSite=Lax', $c, 'protégé contre les requêtes intersites');
+    assert_contains('HttpOnly', $c, 'unreachable from JavaScript');
+    assert_contains('SameSite=Lax', $c, 'protected against cross-site requests');
 });
 
-test('rien hors de public/ n\'est servi', function () use ($base) {
+test('nothing outside public/ is served', function () use ($base) {
     $res = (new Http($base))->request('GET', '/../config.php', rawPath: true);
-    assert_not_contains('STASHBIN_AUTH', $res->body, 'la configuration reste hors ligne');
+    assert_not_contains('STASHBIN_AUTH', $res->body, 'the configuration stays offline');
 });
 
-exit(summary('Instance ouverte (sans authentification)'));
+exit(summary('Open instance (without authentication)'));

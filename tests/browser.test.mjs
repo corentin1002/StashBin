@@ -1,20 +1,20 @@
-// Tests navigateur : cryptographie réelle et parcours d'interface complets.
+// Browser tests: real cryptography and complete interface journeys.
 //
-// Deux niveaux dans un seul fichier :
-//   1. les fonctions de public/assets/stashbin.js appelées directement dans la
-//      page, sans toucher au DOM — c'est le cœur du produit, que rien d'autre
-//      n'exerce ;
-//   2. les parcours utilisateur de bout en bout, depuis le formulaire de
-//      création jusqu'au texte déchiffré affiché au lecteur.
+// Two levels in a single file:
+//   1. the functions of public/assets/stashbin.js called directly in the page,
+//      without touching the DOM — this is the heart of the product, and
+//      nothing else exercises it;
+//   2. the end-to-end user journeys, from the creation form through to the
+//      decrypted text shown to the reader.
 //
-// Le compte rendu reprend la présentation des tests PHP, et le code de sortie
-// vaut 0 si et seulement si tout passe.
+// The report follows the presentation of the PHP tests, and the exit code is 0
+// if and only if everything passes.
 
 import { chromium } from 'playwright';
 
 const BASE = process.env.STASHBIN_URL || 'http://127.0.0.1';
-const USER = process.env.STASHBIN_USER || 'testeur';
-const PASS = process.env.STASHBIN_PASS || 'motdepassetest';
+const USER = process.env.STASHBIN_USER || 'tester';
+const PASS = process.env.STASHBIN_PASS || 'testpassword';
 
 let passed = 0;
 const failures = [];
@@ -58,10 +58,10 @@ async function assertRejects(promise, what) {
   } catch {
     return;
   }
-  throw new Error(`${what} (aucune erreur levée)`);
+  throw new Error(`${what} (no error thrown)`);
 }
 
-// --- Aides de navigation -----------------------------------------------------
+// --- Navigation helpers ------------------------------------------------------
 
 async function login(page) {
   await page.goto(`${BASE}/login.php`);
@@ -70,7 +70,7 @@ async function login(page) {
   await Promise.all([page.waitForURL('**/index.php'), page.click('button[type="submit"]')]);
 }
 
-/** Remplit le formulaire de création et renvoie les deux liens produits. */
+/** Fills the creation form and returns the two links produced. */
 async function createSecret(page, { text, password = '', expire = '1h', burn = false }) {
   await page.goto(`${BASE}/index.php`);
   await page.fill('#secret', text);
@@ -85,7 +85,7 @@ async function createSecret(page, { text, password = '', expire = '1h', burn = f
   };
 }
 
-/** Ouvre un lien de partage et renvoie le texte déchiffré affiché. */
+/** Opens a sharing link and returns the decrypted text displayed. */
 async function readSecret(context, link, { password = null, confirmBurn = false } = {}) {
   const page = await context.newPage();
   await page.goto(link);
@@ -104,120 +104,120 @@ async function readSecret(context, link, { password = null, confirmBurn = false 
   return text;
 }
 
-// --- Exécution ---------------------------------------------------------------
+// --- Execution ---------------------------------------------------------------
 
-// crypto.subtle n'existe que dans un « contexte sécurisé » : HTTPS, ou une
-// origine loopback. Sans cela WebCrypto est absent et l'application ne peut
-// rien chiffrer du tout — c'est ce qui rend HTTPS obligatoire en production, et
-// non un simple conseil. Le lanceur fait donc partager au navigateur l'espace
-// réseau du conteneur applicatif, si bien que l'adresse est 127.0.0.1 : un
-// contexte sûr, sans certificat à fabriquer ni drapeau de contournement.
+// crypto.subtle only exists in a "secure context": HTTPS, or a loopback
+// origin. Without one, WebCrypto is absent and the application cannot encrypt
+// anything at all — which is what makes HTTPS mandatory in production, rather
+// than a mere piece of advice. The runner therefore makes the browser share the
+// application container's network namespace, so the address is 127.0.0.1: a
+// secure context, with no certificate to make and no bypass flag.
 const browser = await chromium.launch();
-// Langue fixée explicitement : l'interface suit désormais Accept-Language, et
-// la langue par défaut de Chromium varie selon l'image. Les libellés attendus
-// plus bas sont ceux du français.
+// Language set explicitly: the interface now follows Accept-Language, and
+// Chromium's default language varies from one image to the next. The labels
+// expected below are the French ones.
 const context = await browser.newContext({ ignoreHTTPSErrors: true, locale: 'fr-FR' });
 const page = await context.newPage();
 await login(page);
 
-// Page dépourvue de #create-form et de #status : les gestionnaires DOM de
-// stashbin.js ne s'activent pas, seules les fonctions restent définies.
+// A page with neither #create-form nor #status: stashbin.js's DOM handlers do
+// not fire, only its functions stay defined.
 const lab = await context.newPage();
 await lab.goto(`${BASE}/login.php`);
 await lab.addScriptTag({ url: 'assets/stashbin.js' });
 
 // ---------------------------------------------------------------------------
-group('Contexte d\'exécution');
+group('Execution context');
 
-await test('la page s\'exécute dans un contexte sécurisé', async () => {
-  // Sans cela, crypto.subtle est absent et rien ne peut être chiffré : c'est
-  // la contrainte qui rend HTTPS obligatoire en production, et non un simple
-  // conseil. Ce test garde aussi les suivants : si l'application cessait d'être
-  // servie depuis une origine sûre, ils échoueraient tous sans que la cause
-  // soit lisible.
+await test('the page runs in a secure context', async () => {
+  // Without it, crypto.subtle is absent and nothing can be encrypted: this is
+  // the constraint that makes HTTPS mandatory in production, rather than a mere
+  // piece of advice. This test also guards the ones after it: if the
+  // application stopped being served from a secure origin, they would all fail
+  // without the cause being legible.
   const state = await lab.evaluate(() => ({
     secure: window.isSecureContext,
     subtle: typeof crypto?.subtle?.importKey,
   }));
-  assertTrue(state.secure, 'window.isSecureContext vaut vrai');
-  assertEq('function', state.subtle, 'crypto.subtle.importKey disponible');
+  assertTrue(state.secure, 'window.isSecureContext is true');
+  assertEq('function', state.subtle, 'crypto.subtle.importKey available');
 });
 
-await test('les fonctions de stashbin.js sont chargées', async () => {
+await test('stashbin.js\'s functions are loaded', async () => {
   const defined = await lab.evaluate(() => ['b64encode', 'b64decode', 'deriveKey', 'encryptText', 'decryptPayload']
     .filter((n) => typeof globalThis[n] === 'function'));
-  assertEq(5, defined.length, `cinq fonctions attendues, trouvées : ${defined.join(', ')}`);
+  assertEq(5, defined.length, `five functions expected, found: ${defined.join(', ')}`);
 });
 
 // ---------------------------------------------------------------------------
-group('Cryptographie — aller-retour');
+group('Cryptography — round trip');
 
 for (const [label, text] of [
-  ['texte ASCII simple', 'mot de passe du serveur : hunter2'],
-  ['accents et ponctuation française', 'Aujourd’hui — château, œuf, ça va ?'],
-  ['emoji et symboles', '🔐 clé → coffre 🗝️ ✔'],
-  ['sauts de ligne et tabulations', 'ligne 1\n\tligne 2\r\nligne 3'],
-  ['caractères de contrôle JSON', 'guillemet " antislash \\ accolade }'],
-  ['texte long (64 Kio)', 'A'.repeat(65536)],
-  ['une seule lettre', 'x'],
+  ['plain ASCII text', 'server password: hunter2'],
+  ['accents and French punctuation', 'Aujourd’hui — château, œuf, ça va ?'],
+  ['emoji and symbols', '🔐 key → vault 🗝️ ✔'],
+  ['line breaks and tabs', 'line 1\n\tline 2\r\nline 3'],
+  ['JSON control characters', 'quote " backslash \\ brace }'],
+  ['long text (64 KiB)', 'A'.repeat(65536)],
+  ['a single letter', 'x'],
 ]) {
-  await test(`déchiffre ce qui a été chiffré : ${label}`, async () => {
+  await test(`decrypts what was encrypted: ${label}`, async () => {
     const out = await lab.evaluate(async (t) => {
       const { urlKey, payload } = await encryptText(t, '');
       return decryptPayload(payload, urlKey, '');
     }, text);
-    assertEq(text, out, 'texte restitué à l\'identique');
+    assertEq(text, out, 'text returned unchanged');
   });
 }
 
-await test('déchiffre un secret protégé par mot de passe', async () => {
+await test('decrypts a password-protected secret', async () => {
   const out = await lab.evaluate(async () => {
-    const { urlKey, payload } = await encryptText('secret gardé', 'phrase de passe');
-    return decryptPayload(payload, urlKey, 'phrase de passe');
+    const { urlKey, payload } = await encryptText('guarded secret', 'pass phrase');
+    return decryptPayload(payload, urlKey, 'pass phrase');
   });
-  assertEq('secret gardé', out, 'mot de passe correct accepté');
+  assertEq('guarded secret', out, 'correct password accepted');
 });
 
 // ---------------------------------------------------------------------------
-group('Cryptographie — un chiffré ne se laisse pas forcer');
+group('Cryptography — a ciphertext will not be forced');
 
-await test('un mot de passe erroné échoue', async () => {
+await test('a wrong password fails', async () => {
   const ok = await lab.evaluate(async () => {
-    const { urlKey, payload } = await encryptText('secret', 'bonne phrase');
-    try { await decryptPayload(payload, urlKey, 'mauvaise phrase'); return false; } catch { return true; }
+    const { urlKey, payload } = await encryptText('secret', 'right phrase');
+    try { await decryptPayload(payload, urlKey, 'wrong phrase'); return false; } catch { return true; }
   });
-  assertTrue(ok, 'déchiffrement refusé');
+  assertTrue(ok, 'decryption refused');
 });
 
-await test('une clé d\'URL erronée échoue', async () => {
+await test('a wrong URL key fails', async () => {
   const ok = await lab.evaluate(async () => {
     const { payload } = await encryptText('secret', '');
-    const autre = await encryptText('autre', '');
-    try { await decryptPayload(payload, autre.urlKey, ''); return false; } catch { return true; }
+    const other = await encryptText('other', '');
+    try { await decryptPayload(payload, other.urlKey, ''); return false; } catch { return true; }
   });
-  assertTrue(ok, 'déchiffrement refusé');
+  assertTrue(ok, 'decryption refused');
 });
 
-await test('un mot de passe fourni alors qu\'il n\'y en avait pas échoue', async () => {
+await test('a password supplied when there was none fails', async () => {
   const ok = await lab.evaluate(async () => {
     const { urlKey, payload } = await encryptText('secret', '');
-    try { await decryptPayload(payload, urlKey, 'inattendu'); return false; } catch { return true; }
+    try { await decryptPayload(payload, urlKey, 'unexpected'); return false; } catch { return true; }
   });
-  assertTrue(ok, 'la dérivation dépend bien du mot de passe');
+  assertTrue(ok, 'derivation really does depend on the password');
 });
 
-await test('un chiffré altéré est rejeté (authentification AES-GCM)', async () => {
+await test('an altered ciphertext is rejected (AES-GCM authentication)', async () => {
   const ok = await lab.evaluate(async () => {
     const { urlKey, payload } = await encryptText('secret', '');
     const bytes = b64decode(payload.ct);
-    bytes[Math.floor(bytes.length / 2)] ^= 0x01; // un seul bit retourné
+    bytes[Math.floor(bytes.length / 2)] ^= 0x01; // a single bit flipped
     payload.ct = b64encode(bytes);
     try { await decryptPayload(payload, urlKey, ''); return false; } catch { return true; }
   });
-  assertTrue(ok, 'un bit modifié suffit à invalider le message');
+  assertTrue(ok, 'one changed bit is enough to invalidate the message');
 });
 
-await test('un vecteur d\'initialisation altéré est rejeté', async () => {
+await test('an altered initialisation vector is rejected', async () => {
   const ok = await lab.evaluate(async () => {
     const { urlKey, payload } = await encryptText('secret', '');
     const iv = b64decode(payload.iv);
@@ -225,10 +225,10 @@ await test('un vecteur d\'initialisation altéré est rejeté', async () => {
     payload.iv = b64encode(iv);
     try { await decryptPayload(payload, urlKey, ''); return false; } catch { return true; }
   });
-  assertTrue(ok, 'le vecteur fait partie de l\'authentification');
+  assertTrue(ok, 'the vector is part of the authentication');
 });
 
-await test('un sel altéré est rejeté', async () => {
+await test('an altered salt is rejected', async () => {
   const ok = await lab.evaluate(async () => {
     const { urlKey, payload } = await encryptText('secret', '');
     const salt = b64decode(payload.salt);
@@ -236,30 +236,30 @@ await test('un sel altéré est rejeté', async () => {
     payload.salt = b64encode(salt);
     try { await decryptPayload(payload, urlKey, ''); return false; } catch { return true; }
   });
-  assertTrue(ok, 'le sel change la clé dérivée');
+  assertTrue(ok, 'the salt changes the derived key');
 });
 
 // ---------------------------------------------------------------------------
-group('Cryptographie — paramètres du payload');
+group('Cryptography — payload parameters');
 
-await test('chaque chiffrement tire une clé, un sel et un vecteur neufs', async () => {
+await test('each encryption draws a fresh key, salt and vector', async () => {
   const r = await lab.evaluate(async () => {
-    const a = await encryptText('même texte', '');
-    const b = await encryptText('même texte', '');
+    const a = await encryptText('same text', '');
+    const b = await encryptText('same text', '');
     return {
-      cles: a.urlKey !== b.urlKey,
-      sels: a.payload.salt !== b.payload.salt,
-      vecteurs: a.payload.iv !== b.payload.iv,
-      chiffres: a.payload.ct !== b.payload.ct,
+      keys: a.urlKey !== b.urlKey,
+      salts: a.payload.salt !== b.payload.salt,
+      vectors: a.payload.iv !== b.payload.iv,
+      ciphertexts: a.payload.ct !== b.payload.ct,
     };
   });
-  assertTrue(r.cles, 'clés d\'URL distinctes');
-  assertTrue(r.sels, 'sels distincts');
-  assertTrue(r.vecteurs, 'vecteurs distincts');
-  assertTrue(r.chiffres, 'un même texte ne produit jamais deux fois le même chiffré');
+  assertTrue(r.keys, 'distinct URL keys');
+  assertTrue(r.salts, 'distinct salts');
+  assertTrue(r.vectors, 'distinct vectors');
+  assertTrue(r.ciphertexts, 'the same text never produces the same ciphertext twice');
 });
 
-await test('les tailles respectent les annonces du README', async () => {
+await test('the sizes match what the README announces', async () => {
   const r = await lab.evaluate(async () => {
     const { urlKey, payload } = await encryptText('x', '');
     return {
@@ -270,29 +270,29 @@ await test('les tailles respectent les annonces du README', async () => {
       v: payload.v,
     };
   });
-  assertEq(32, r.urlKey, 'clé d\'URL de 256 bits');
-  assertEq(16, r.salt, 'sel de 128 bits');
-  assertEq(12, r.iv, 'vecteur de 96 bits');
-  assertEq(310000, r.iter, '310 000 itérations PBKDF2');
-  assertEq(1, r.v, 'version de format');
+  assertEq(32, r.urlKey, '256-bit URL key');
+  assertEq(16, r.salt, '128-bit salt');
+  assertEq(12, r.iv, '96-bit vector');
+  assertEq(310000, r.iter, '310,000 PBKDF2 iterations');
+  assertEq(1, r.v, 'format version');
 });
 
-await test('l\'indicateur « pwd » reflète la présence d\'un mot de passe', async () => {
+await test('the "pwd" flag reflects whether a password is present', async () => {
   const r = await lab.evaluate(async () => ({
-    sans: (await encryptText('x', '')).payload.pwd,
-    avec: (await encryptText('x', 'phrase')).payload.pwd,
+    without: (await encryptText('x', '')).payload.pwd,
+    with: (await encryptText('x', 'phrase')).payload.pwd,
   }));
-  assertEq(0, r.sans, 'aucun mot de passe');
-  assertEq(1, r.avec, 'mot de passe présent');
+  assertEq(0, r.without, 'no password');
+  assertEq(1, r.with, 'password present');
 });
 
-await test('la clé d\'URL est encodée en base64url, sans remplissage', async () => {
+await test('the URL key is base64url-encoded, without padding', async () => {
   const key = await lab.evaluate(async () => (await encryptText('x', '')).urlKey);
-  assertTrue(/^[A-Za-z0-9_-]+$/.test(key), `caractères sûrs pour une URL : ${key}`);
-  assertTrue(!key.includes('='), 'aucun caractère de remplissage');
+  assertTrue(/^[A-Za-z0-9_-]+$/.test(key), `URL-safe characters: ${key}`);
+  assertTrue(!key.includes('='), 'no padding character');
 });
 
-await test('l\'encodage base64url survit à un aller-retour sur des octets quelconques', async () => {
+await test('base64url encoding survives a round trip on arbitrary bytes', async () => {
   const ok = await lab.evaluate(() => {
     for (let n = 0; n < 200; n++) {
       const src = crypto.getRandomValues(new Uint8Array(n));
@@ -302,191 +302,191 @@ await test('l\'encodage base64url survit à un aller-retour sur des octets quelc
     }
     return true;
   });
-  assertTrue(ok, 'toutes les longueurs de 0 à 199 octets');
+  assertTrue(ok, 'every length from 0 to 199 bytes');
 });
 
 // ---------------------------------------------------------------------------
-group('Parcours complet dans le navigateur');
+group('Full journey in the browser');
 
-await test('créer puis relire un secret restitue le texte d\'origine', async () => {
-  const texte = 'Le serveur ne doit jamais voir cette phrase — 🔐';
-  const { share } = await createSecret(page, { text: texte });
-  assertTrue(share.includes('#'), `le lien porte la clé dans son fragment : ${share}`);
-  assertEq(texte, await readSecret(context, share), 'texte déchiffré identique');
+await test('creating then reading a secret returns the original text', async () => {
+  const text = 'The server must never see this sentence — 🔐';
+  const { share } = await createSecret(page, { text });
+  assertTrue(share.includes('#'), `the link carries the key in its fragment: ${share}`);
+  assertEq(text, await readSecret(context, share), 'decrypted text identical');
 });
 
-await test('la clé de déchiffrement n\'est jamais transmise au serveur', async () => {
-  const { share } = await createSecret(page, { text: 'contrôle du fragment' });
-  const [avant, fragment] = share.split('#');
-  assertTrue(Boolean(fragment), 'un fragment est bien présent');
-  assertTrue(!avant.includes(fragment), 'la clé n\'apparaît pas dans la partie envoyée au serveur');
+await test('the decryption key is never transmitted to the server', async () => {
+  const { share } = await createSecret(page, { text: 'fragment check' });
+  const [before, fragment] = share.split('#');
+  assertTrue(Boolean(fragment), 'a fragment really is present');
+  assertTrue(!before.includes(fragment), 'the key does not appear in the part sent to the server');
 });
 
-await test('un secret protégé par mot de passe exige ce mot de passe', async () => {
-  const texte = 'doublement protégé';
-  const { share } = await createSecret(page, { text: texte, password: 'phrase secrète' });
+await test('a password-protected secret demands that password', async () => {
+  const text = 'doubly protected';
+  const { share } = await createSecret(page, { text, password: 'secret phrase' });
 
   const p = await context.newPage();
   await p.goto(share);
   await p.waitForSelector('#password-prompt:not(.hidden)', { timeout: 20000 });
-  assertTrue(await p.isHidden('#content'), 'le contenu reste masqué tant que le mot de passe manque');
+  assertTrue(await p.isHidden('#content'), 'the content stays hidden while the password is missing');
   await p.close();
 
-  assertEq(texte, await readSecret(context, share, { password: 'phrase secrète' }), 'mot de passe correct');
+  assertEq(text, await readSecret(context, share, { password: 'secret phrase' }), 'correct password');
 });
 
-await test('un mot de passe erroné affiche une erreur sans révéler le secret', async () => {
-  const { share } = await createSecret(page, { text: 'inaccessible', password: 'la bonne' });
+await test('a wrong password shows an error without revealing the secret', async () => {
+  const { share } = await createSecret(page, { text: 'unreachable', password: 'the right one' });
   const p = await context.newPage();
   await p.goto(share);
   await p.waitForSelector('#password-prompt:not(.hidden)', { timeout: 20000 });
-  await p.fill('#paste-password', 'la mauvaise');
+  await p.fill('#paste-password', 'the wrong one');
   await p.click('#password-form button[type="submit"]');
   await p.waitForSelector('#decrypt-error:not(.hidden)', { timeout: 20000 });
-  assertTrue(await p.isHidden('#content'), 'le secret reste masqué');
-  assertEq('Mot de passe incorrect.', (await p.textContent('#decrypt-error')).trim(), 'message affiché');
+  assertTrue(await p.isHidden('#content'), 'the secret stays hidden');
+  assertEq('Mot de passe incorrect.', (await p.textContent('#decrypt-error')).trim(), 'message shown');
   await p.close();
 });
 
-await test('un lien dont la clé a été tronquée ne déchiffre rien', async () => {
-  const { share } = await createSecret(page, { text: 'clé tronquée' });
+await test('a link whose key has been truncated decrypts nothing', async () => {
+  const { share } = await createSecret(page, { text: 'truncated key' });
   const [url, key] = share.split('#');
   const p = await context.newPage();
   await p.goto(`${url}#${key.slice(0, -4)}`);
   await p.waitForSelector('#status:not(.hidden)', { timeout: 20000 });
-  assertTrue(await p.isHidden('#content'), 'aucun contenu affiché');
+  assertTrue(await p.isHidden('#content'), 'no content displayed');
   await p.close();
 });
 
-await test('un lien sans fragment signale l\'absence de clé', async () => {
-  const { share } = await createSecret(page, { text: 'sans clé' });
+await test('a link without a fragment reports the missing key', async () => {
+  const { share } = await createSecret(page, { text: 'no key' });
   const p = await context.newPage();
   await p.goto(share.split('#')[0]);
   await p.waitForSelector('#status:not(.hidden)', { timeout: 20000 });
   const msg = await p.textContent('#status');
-  assertTrue(msg.includes('clé de déchiffrement'), `message explicite, obtenu : ${msg}`);
+  assertTrue(msg.includes('clé de déchiffrement'), `explicit message, got: ${msg}`);
   await p.close();
 });
 
 // ---------------------------------------------------------------------------
-group('Destruction après lecture, vue du navigateur');
+group('Burn after reading, seen from the browser');
 
-await test('un écran de confirmation précède la consommation du secret', async () => {
-  const { share } = await createSecret(page, { text: 'à usage unique', burn: true });
+await test('a confirmation screen precedes consuming the secret', async () => {
+  const { share } = await createSecret(page, { text: 'single use', burn: true });
   const p = await context.newPage();
   await p.goto(share);
   await p.waitForSelector('#burn-confirm:not(.hidden)', { timeout: 20000 });
-  assertTrue(await p.isHidden('#content'), 'le secret n\'est pas encore révélé');
+  assertTrue(await p.isHidden('#content'), 'the secret is not revealed yet');
   await p.close();
 
-  // Le secret doit donc être toujours lisible après avoir seulement ouvert la page.
-  assertEq('à usage unique', await readSecret(context, share, { confirmBurn: true }), 'révélé après confirmation');
+  // The secret must therefore still be readable after merely opening the page.
+  assertEq('single use', await readSecret(context, share, { confirmBurn: true }), 'revealed after confirmation');
 });
 
-await test('après confirmation, le secret n\'est plus accessible', async () => {
-  const { share } = await createSecret(page, { text: 'volatil', burn: true });
-  assertEq('volatil', await readSecret(context, share, { confirmBurn: true }), 'première lecture');
+await test('after confirmation, the secret is no longer reachable', async () => {
+  const { share } = await createSecret(page, { text: 'volatile', burn: true });
+  assertEq('volatile', await readSecret(context, share, { confirmBurn: true }), 'first read');
 
   const p = await context.newPage();
   await p.goto(share);
   await p.waitForSelector('#status:not(.hidden)', { timeout: 20000 });
   const msg = await p.textContent('#status');
-  assertTrue(msg.includes('n’existe pas ou plus'), `message d'absence attendu, obtenu : ${msg}`);
+  assertTrue(msg.includes('n’existe pas ou plus'), `absence message expected, got: ${msg}`);
   await p.close();
 });
 
 // ---------------------------------------------------------------------------
-group('Lien de suppression, vu du navigateur');
+group('Deletion link, seen from the browser');
 
-await test('le créateur peut supprimer son secret par le lien fourni', async () => {
-  const texte = 'à supprimer';
-  const { share, remove } = await createSecret(page, { text: texte });
-  assertEq(texte, await readSecret(context, share), 'lisible avant suppression');
+await test('the creator can delete their secret through the link provided', async () => {
+  const text = 'to be deleted';
+  const { share, remove } = await createSecret(page, { text });
+  assertEq(text, await readSecret(context, share), 'readable before deletion');
 
   const p = await context.newPage();
   await p.goto(remove);
-  assertTrue((await p.textContent('body')).includes('deleted'), 'suppression confirmée');
+  assertTrue((await p.textContent('body')).includes('deleted'), 'deletion confirmed');
   await p.close();
 
   const q = await context.newPage();
   await q.goto(share);
   await q.waitForSelector('#status:not(.hidden)', { timeout: 20000 });
-  assertTrue((await q.textContent('#status')).includes('n’existe pas ou plus'), 'secret devenu introuvable');
+  assertTrue((await q.textContent('#status')).includes('n’existe pas ou plus'), 'secret now not found');
   await q.close();
 });
 
 // ---------------------------------------------------------------------------
-group('Langue de l\'interface');
+group('Interface language');
 
-// Contextes neufs : celui des tests précédents porte une session ouverte, et
-// login.php redirigerait alors vers la page de création.
+// Fresh contexts: the one used by the previous tests carries an open session,
+// and login.php would then redirect to the creation page.
 const english = await browser.newContext({ ignoreHTTPSErrors: true, locale: 'en-US' });
 const french = await browser.newContext({ ignoreHTTPSErrors: true, locale: 'fr-FR' });
 
-await test('un navigateur anglophone reçoit l\'interface en anglais', async () => {
+await test('an English-speaking browser gets the interface in English', async () => {
   const p = await english.newPage();
   await p.goto(`${BASE}/login.php`);
-  assertEq('en', await p.getAttribute('html', 'lang'), 'langue déclarée dans la page');
-  assertTrue((await p.textContent('button[type="submit"]')).includes('Sign in'), 'bouton traduit');
+  assertEq('en', await p.getAttribute('html', 'lang'), 'language declared in the page');
+  assertTrue((await p.textContent('button[type="submit"]')).includes('Sign in'), 'button translated');
   await p.close();
 });
 
-await test('un navigateur francophone reçoit toujours l\'interface en français', async () => {
+await test('a French-speaking browser still gets the interface in French', async () => {
   const p = await french.newPage();
   await p.goto(`${BASE}/login.php`);
-  assertEq('fr', await p.getAttribute('html', 'lang'), 'langue déclarée dans la page');
-  assertTrue((await p.textContent('button[type="submit"]')).includes('Se connecter'), 'bouton en français');
+  assertEq('fr', await p.getAttribute('html', 'lang'), 'language declared in the page');
+  assertTrue((await p.textContent('button[type="submit"]')).includes('Se connecter'), 'button in French');
   await p.close();
 });
 
-await test('un navigateur qui demande une langue non traduite reçoit l\'anglais', async () => {
-  // Le repli doit être une langue réelle : servi vide, l'interface afficherait
-  // ses identifiants de clés.
+await test('a browser asking for an untranslated language gets English', async () => {
+  // The fallback must be a real language: served empty, the interface would
+  // show its key identifiers.
   const german = await browser.newContext({ ignoreHTTPSErrors: true, locale: 'de-DE' });
   const p = await german.newPage();
   await p.goto(`${BASE}/login.php`);
-  assertEq('en', await p.getAttribute('html', 'lang'), 'anglais servi faute d\'allemand');
-  assertTrue((await p.textContent('button[type="submit"]')).includes('Sign in'), 'bouton en anglais');
-  assertTrue(!(await p.content()).includes('login.submit'), 'aucune clé brute affichée');
+  assertEq('en', await p.getAttribute('html', 'lang'), 'English served for want of German');
+  assertTrue((await p.textContent('button[type="submit"]')).includes('Sign in'), 'button in English');
+  assertTrue(!(await p.content()).includes('login.submit'), 'no raw key displayed');
   await p.close();
   await german.close();
 });
 
-await test('le paramètre « lang » l\'emporte sur la langue du navigateur', async () => {
+await test('the "lang" parameter outranks the browser language', async () => {
   const p = await english.newPage();
   await p.goto(`${BASE}/login.php?lang=fr`);
-  assertEq('fr', await p.getAttribute('html', 'lang'), 'choix explicite retenu');
+  assertEq('fr', await p.getAttribute('html', 'lang'), 'explicit choice honoured');
   await p.close();
 });
 
-await test('les messages produits par le JavaScript sont traduits eux aussi', async () => {
-  // Le dictionnaire du client vient de la page : c'est ce chemin-là qu'on
-  // vérifie, et non un second jeu de chaînes embarqué dans le script.
+await test('the messages the JavaScript produces are translated too', async () => {
+  // The client's dictionary comes from the page: that is the path being
+  // checked here, not a second set of strings embedded in the script.
   const p = await english.newPage();
-  await p.goto(`${BASE}/view.php?id=${'z'.repeat(16)}#cle`);
+  await p.goto(`${BASE}/view.php?id=${'z'.repeat(16)}#key`);
   await p.waitForFunction(() => !document.getElementById('status').textContent.includes('Loading'), null, { timeout: 20000 });
   const status = await p.textContent('#status');
-  assertTrue(status.includes('does not exist any more'), `message en anglais (obtenu : ${status})`);
+  assertTrue(status.includes('does not exist any more'), `message in English (got: ${status})`);
   await p.close();
 });
 
-await test('le parcours de création fonctionne à l\'identique en anglais', async () => {
-  // La traduction ne doit rien changer au chiffrement : le texte relu doit
-  // être exactement celui saisi.
+await test('the creation journey works identically in English', async () => {
+  // Translation must change nothing about the encryption: the text read back
+  // must be exactly the one typed in.
   const p = await english.newPage();
   await p.goto(`${BASE}/login.php`);
   await p.fill('input[name="username"]', USER);
   await p.fill('input[name="password"]', PASS);
   await Promise.all([p.waitForURL('**/index.php'), p.click('button[type="submit"]')]);
 
-  const secret = 'Interface en anglais, secret en français — éàü 🔐';
+  const secret = 'English interface, French secret — éàü 🔐';
   await p.fill('#secret', secret);
   await p.click('#submit-btn');
   await p.waitForSelector('#result:not(.hidden)', { timeout: 20000 });
   const link = await p.inputValue('#share-link');
   await p.close();
 
-  assertEq(secret, await readSecret(english, link), 'texte restitué à l\'identique');
+  assertEq(secret, await readSecret(english, link), 'text returned unchanged');
 });
 
 await french.close();
@@ -498,9 +498,9 @@ await browser.close();
 const total = passed + failures.length;
 console.log('');
 if (failures.length === 0) {
-  console.log(`  ${c(32, `Tests navigateur : ${total} tests, tous réussis`)}`);
+  console.log(`  ${c(32, `Browser tests: ${total} tests, all passed`)}`);
   process.exit(0);
 }
-console.log(`  ${c(31, `Tests navigateur : ${total} tests, ${failures.length} en échec`)}`);
+console.log(`  ${c(31, `Browser tests: ${total} tests, ${failures.length} failed`)}`);
 for (const [g, n] of failures) console.log(`    - ${g} / ${n}`);
 process.exit(1);

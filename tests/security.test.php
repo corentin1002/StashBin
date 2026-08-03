@@ -1,275 +1,278 @@
 <?php
-// Régressions de sécurité : ce qui ne doit jamais redevenir possible.
-// Chaque test correspond à une garantie annoncée par le README.
+// Security regressions: what must never become possible again.
+// Every test corresponds to a guarantee the README makes.
 declare(strict_types=1);
 
 require __DIR__ . '/lib.php';
 require dirname(__DIR__) . '/src/bootstrap.php';
 
 $base = getenv('STASHBIN_URL') ?: 'http://127.0.0.1';
-$user = getenv('STASHBIN_USER') ?: 'testeur';
-$pass = getenv('STASHBIN_PASS') ?: 'motdepassetest';
+$user = getenv('STASHBIN_USER') ?: 'tester';
+$pass = getenv('STASHBIN_PASS') ?: 'testpassword';
 
 $http = new Http($base);
 $token = $http->login($user, $pass);
 
 // ---------------------------------------------------------------------------
-group('Rien hors de public/ n\'est servi');
+group('Nothing outside public/ is served');
 
-test('config.php n\'est pas accessible', function () use ($http) {
+test('config.php is not reachable', function () use ($http) {
     foreach (['/../config.php', '/config.php', '/..%2fconfig.php'] as $path) {
         $res = $http->request('GET', $path, rawPath: true);
-        assert_not_contains('STASHBIN_DB', $res->body, "« $path » ne divulgue pas la configuration");
+        assert_not_contains('STASHBIN_DB', $res->body, "\"$path\" does not leak the configuration");
     }
 });
 
-test('le code de src/ n\'est pas accessible', function () use ($http) {
+test('the code in src/ is not reachable', function () use ($http) {
     $res = $http->request('GET', '/../src/bootstrap.php', rawPath: true);
-    assert_not_contains('function db(', $res->body, 'bootstrap.php non servi');
+    assert_not_contains('function db(', $res->body, 'bootstrap.php not served');
 });
 
-test('la base SQLite n\'est pas téléchargeable', function () use ($http) {
+test('the SQLite database cannot be downloaded', function () use ($http) {
     foreach (['/../data/stashbin.sqlite', '/data/stashbin.sqlite'] as $path) {
         $res = $http->request('GET', $path, rawPath: true);
-        assert_true($res->status >= 400, "« $path » inaccessible (HTTP {$res->status})");
+        assert_true($res->status >= 400, "\"$path\" unreachable (HTTP {$res->status})");
     }
 });
 
-test('bin/user.php n\'est pas exposé', function () use ($http) {
+test('bin/user.php is not exposed', function () use ($http) {
     $res = $http->request('GET', '/../bin/user.php', rawPath: true);
-    assert_not_contains('password_hash', $res->body, 'la CLI de gestion des comptes reste hors ligne');
+    assert_not_contains('password_hash', $res->body, 'the account management CLI stays offline');
 });
 
 // ---------------------------------------------------------------------------
-group('En-têtes de sécurité');
+group('Security headers');
 
-test('la politique de sécurité du contenu est stricte', function () use ($http) {
+test('the content security policy is strict', function () use ($http) {
     $csp = (string) $http->get('/login.php')->header('Content-Security-Policy');
-    assert_contains("default-src 'none'", $csp, 'tout est refusé par défaut');
-    assert_contains("script-src 'self'", $csp, 'scripts limités à l\'origine');
-    assert_contains("frame-ancestors 'none'", $csp, 'inclusion en iframe interdite');
-    assert_contains("base-uri 'none'", $csp, 'balise base neutralisée');
-    assert_contains("form-action 'self'", $csp, 'soumission de formulaire limitée à l\'origine');
-    assert_not_contains("'unsafe-inline'", $csp, 'aucun script ni style en ligne autorisé');
-    assert_not_contains("'unsafe-eval'", $csp, 'eval interdit');
+    assert_contains("default-src 'none'", $csp, 'everything refused by default');
+    assert_contains("script-src 'self'", $csp, 'scripts limited to the origin');
+    assert_contains("frame-ancestors 'none'", $csp, 'framing forbidden');
+    assert_contains("base-uri 'none'", $csp, 'base tag neutralised');
+    assert_contains("form-action 'self'", $csp, 'form submission limited to the origin');
+    assert_not_contains("'unsafe-inline'", $csp, 'no inline script or style allowed');
+    assert_not_contains("'unsafe-eval'", $csp, 'eval forbidden');
 });
 
-test('les autres en-têtes de durcissement sont présents', function () use ($http) {
+test('the other hardening headers are present', function () use ($http) {
     $res = $http->get('/login.php');
-    assert_eq('nosniff', $res->header('X-Content-Type-Options'), 'pas de reniflage de type');
-    assert_eq('no-referrer', $res->header('Referrer-Policy'), 'aucun référent transmis');
+    assert_eq('nosniff', $res->header('X-Content-Type-Options'), 'no type sniffing');
+    assert_eq('no-referrer', $res->header('Referrer-Policy'), 'no referrer sent');
 });
 
-test('les en-têtes sont aussi posés sur l\'API', function () use ($http) {
+test('the headers are set on the API too', function () use ($http) {
     $csp = (string) $http->get('/api.php?id=!!')->header('Content-Security-Policy');
-    assert_contains("default-src 'none'", $csp, 'API protégée de la même façon');
+    assert_contains("default-src 'none'", $csp, 'API protected the same way');
 });
 
 // ---------------------------------------------------------------------------
-group('Session et authentification');
+// The French literals asserted below are the interface strings themselves: the
+// HTTP client of lib.php requests Accept-Language: fr, so that the labels these
+// tests expect do not depend on the server's fallback.
+group('Session and authentication');
 
-test('la configuration livrée exige l\'authentification', function () {
-    // L'ouverture est un choix explicite de l'exploitant : le dépôt ne doit
-    // jamais partir avec la création accessible à tous.
-    assert_eq(true, config()['auth'], 'clé « auth » à true dans config.php');
+test('the shipped configuration requires authentication', function () {
+    // Opening up is an explicit choice made by the operator: the repository
+    // must never ship with creation available to everyone.
+    assert_eq(true, config()['auth'], '"auth" key set to true in config.php');
 });
 
-test('le cookie de session est HttpOnly et SameSite', function () use ($base) {
+test('the session cookie is HttpOnly and SameSite', function () use ($base) {
     $anon = new Http($base);
     $cookies = $anon->get('/login.php')->headerAll('Set-Cookie');
-    assert_true($cookies !== [], 'un cookie de session est émis');
+    assert_true($cookies !== [], 'a session cookie is issued');
     $c = implode(' ', $cookies);
-    assert_contains('HttpOnly', $c, 'inaccessible au JavaScript');
-    assert_contains('SameSite=Lax', $c, 'protégé contre les requêtes intersites');
-    assert_contains('path=/', strtolower($c), 'portée explicite');
+    assert_contains('HttpOnly', $c, 'unreachable from JavaScript');
+    assert_contains('SameSite=Lax', $c, 'protected against cross-site requests');
+    assert_contains('path=/', strtolower($c), 'explicit scope');
 });
 
-test('un mot de passe erroné n\'ouvre pas de session', function () use ($base, $user) {
+test('a wrong password opens no session', function () use ($base, $user) {
     $anon = new Http($base);
     $page = $anon->get('/login.php')->body;
     preg_match('/name="csrf" value="([^"]+)"/', $page, $m);
-    $res = $anon->post('/login.php', ['csrf' => $m[1], 'username' => $user, 'password' => 'mauvais']);
-    assert_eq(200, $res->status, 'retour au formulaire, pas de redirection');
-    assert_contains('Identifiants incorrects', $res->body, 'message d\'échec affiché');
-    assert_eq(302, $anon->get('/index.php')->status, 'accès à la création toujours refusé');
+    $res = $anon->post('/login.php', ['csrf' => $m[1], 'username' => $user, 'password' => 'wrong']);
+    assert_eq(200, $res->status, 'back to the form, no redirect');
+    assert_contains('Identifiants incorrects', $res->body, 'failure message shown');
+    assert_eq(302, $anon->get('/index.php')->status, 'access to creation still refused');
 });
 
-test('un compte inexistant est rejeté comme un mot de passe erroné', function () use ($base) {
+test('a nonexistent account is rejected exactly like a wrong password', function () use ($base) {
     $anon = new Http($base);
     $page = $anon->get('/login.php')->body;
     preg_match('/name="csrf" value="([^"]+)"/', $page, $m);
-    $res = $anon->post('/login.php', ['csrf' => $m[1], 'username' => 'inexistant', 'password' => 'x']);
-    assert_contains('Identifiants incorrects', $res->body, 'même message : pas d\'énumération de comptes');
+    $res = $anon->post('/login.php', ['csrf' => $m[1], 'username' => 'nobody', 'password' => 'x']);
+    assert_contains('Identifiants incorrects', $res->body, 'same message: no account enumeration');
 });
 
-test('la connexion sans jeton CSRF est refusée', function () use ($base, $user, $pass) {
+test('signing in without a CSRF token is refused', function () use ($base, $user, $pass) {
     $anon = new Http($base);
     $anon->get('/login.php');
     $res = $anon->post('/login.php', ['username' => $user, 'password' => $pass]);
-    assert_contains('Session expirée', $res->body, 'formulaire rejeté sans jeton');
-    assert_eq(302, $anon->get('/index.php')->status, 'aucune session ouverte');
+    assert_contains('Session expirée', $res->body, 'form rejected without a token');
+    assert_eq(302, $anon->get('/index.php')->status, 'no session opened');
 });
 
-test('l\'identifiant de session change à la connexion (anti-fixation)', function () use ($base, $user, $pass) {
+test('the session identifier changes on sign-in (anti-fixation)', function () use ($base, $user, $pass) {
     $anon = new Http($base);
     $before = $anon->get('/login.php')->header('Set-Cookie');
     preg_match('/stashbin=([^;]+)/', (string) $before, $m1);
     preg_match('/name="csrf" value="([^"]+)"/', $anon->get('/login.php')->body, $mc);
     $res = $anon->post('/login.php', ['csrf' => $mc[1], 'username' => $user, 'password' => $pass]);
     preg_match('/stashbin=([^;]+)/', (string) $res->header('Set-Cookie'), $m2);
-    assert_true(isset($m1[1], $m2[1]), 'deux identifiants de session observés');
-    assert_true($m1[1] !== $m2[1], 'identifiant régénéré après authentification');
+    assert_true(isset($m1[1], $m2[1]), 'two session identifiers observed');
+    assert_true($m1[1] !== $m2[1], 'identifier regenerated after authentication');
 });
 
-test('la déconnexion referme la session', function () use ($base, $user, $pass) {
+test('signing out closes the session', function () use ($base, $user, $pass) {
     $c = new Http($base);
     $c->login($user, $pass);
-    assert_eq(200, $c->get('/index.php')->status, 'session ouverte');
+    assert_eq(200, $c->get('/index.php')->status, 'session open');
     $c->get('/logout.php');
-    assert_eq(302, $c->get('/index.php')->status, 'session fermée');
+    assert_eq(302, $c->get('/index.php')->status, 'session closed');
 });
 
-test('la page de création est inaccessible sans session', function () use ($base) {
+test('the creation page is unreachable without a session', function () use ($base) {
     $anon = new Http($base);
     $res = $anon->get('/index.php');
-    assert_eq(302, $res->status, 'redirection');
-    assert_contains('login.php', (string) $res->header('Location'), 'vers la page de connexion');
+    assert_eq(302, $res->status, 'redirect');
+    assert_contains('login.php', (string) $res->header('Location'), 'to the sign-in page');
 });
 
 // ---------------------------------------------------------------------------
-group('Le serveur ne peut pas lire les secrets');
+group('The server cannot read the secrets');
 
-test('le payload est stocké tel quel, sans déchiffrement possible', function () use ($http, $token) {
-    $marker = 'TEXTEENCLAIRQUINEDOITJAMAISAPPARAITRE';
+test('the payload is stored as-is, with no decryption possible', function () use ($http, $token) {
+    $marker = 'PLAINTEXTTHATMUSTNEVERAPPEAR';
     $payload = ['v' => 1, 'iv' => 'AAAA', 'salt' => 'BBBB', 'iter' => 310000, 'pwd' => 0,
                 'ct' => base64_encode($marker)];
     $id = $http->createSecret(['payload' => $payload], $token)->json()['id'];
 
     $stored = db()->query('SELECT payload FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
-    // Le serveur conserve le conteneur JSON à l'identique : il ne décode rien,
-    // ne dérive aucune clé, et n'a aucun moyen d'obtenir le texte en clair.
-    assert_eq($payload, json_decode((string) $stored, true), 'payload conservé sans transformation');
-    assert_not_contains($marker, (string) $stored, 'aucun déchiffrement côté serveur');
+    // The server keeps the JSON container unchanged: it decodes nothing,
+    // derives no key, and has no way of obtaining the plaintext.
+    assert_eq($payload, json_decode((string) $stored, true), 'payload kept without transformation');
+    assert_not_contains($marker, (string) $stored, 'no server-side decryption');
 });
 
-test('aucune colonne ne conserve de clé ni de mot de passe', function () {
+test('no column keeps a key or a password', function () {
     $cols = array_column(db()->query('PRAGMA table_info(pastes)')->fetchAll(), 'name');
     foreach (['key', 'urlkey', 'password', 'passphrase', 'plaintext'] as $forbidden) {
-        assert_true(!in_array($forbidden, $cols, true), "colonne « $forbidden » absente du schéma");
+        assert_true(!in_array($forbidden, $cols, true), "\"$forbidden\" column absent from the schema");
     }
 });
 
-test('le jeton de suppression est stocké haché, jamais en clair', function () use ($http, $token) {
+test('the deletion token is stored hashed, never in the clear', function () use ($http, $token) {
     $d = $http->createSecret([], $token)->json();
     $stored = db()->query('SELECT delete_hash FROM pastes WHERE id = ' . db()->quote($d['id']))->fetchColumn();
-    assert_true($stored !== $d['delete_token'], 'le jeton brut n\'est pas en base');
-    assert_eq(hash('sha256', $d['delete_token']), $stored, 'empreinte SHA-256 enregistrée');
+    assert_true($stored !== $d['delete_token'], 'the raw token is not in the database');
+    assert_eq(hash('sha256', $d['delete_token']), $stored, 'SHA-256 digest recorded');
 });
 
-test('le mot de passe des comptes est haché avec un algorithme reconnu', function () {
+test('account passwords are hashed with a recognised algorithm', function () {
     $hash = (string) db()->query('SELECT pass_hash FROM users LIMIT 1')->fetchColumn();
-    assert_matches('/^\$(2y|argon2i?d?)\$/', $hash, 'bcrypt ou argon2, jamais du clair ni du MD5');
+    assert_matches('/^\$(2y|argon2i?d?)\$/', $hash, 'bcrypt or argon2, never plaintext or MD5');
     $info = password_get_info($hash);
-    assert_true($info['algo'] !== null && $info['algo'] !== '0', 'algorithme reconnu par PHP');
+    assert_true($info['algo'] !== null && $info['algo'] !== '0', 'algorithm recognised by PHP');
 });
 
 // ---------------------------------------------------------------------------
 group('Injection');
 
-test('un identifiant contenant du SQL ne perturbe pas la requête', function () use ($http) {
-    // Le filtre de format rejette avant même la requête préparée : deux barrières.
+test('an identifier containing SQL does not disturb the query', function () use ($http) {
+    // The format filter rejects before the prepared statement is even reached:
+    // two barriers.
     $res = $http->get('/api.php?id=' . urlencode("' OR 1=1 --"));
-    assert_eq(400, $res->status, 'tentative d\'injection rejetée');
-    assert_true((int) db()->query('SELECT COUNT(*) FROM pastes')->fetchColumn() >= 0, 'table intacte');
+    assert_eq(400, $res->status, 'injection attempt rejected');
+    assert_true((int) db()->query('SELECT COUNT(*) FROM pastes')->fetchColumn() >= 0, 'table intact');
 });
 
-test('un nom d\'utilisateur contenant du SQL ne perturbe pas la connexion', function () use ($base) {
+test('a username containing SQL does not disturb sign-in', function () use ($base) {
     $anon = new Http($base);
     preg_match('/name="csrf" value="([^"]+)"/', $anon->get('/login.php')->body, $m);
     $res = $anon->post('/login.php', [
         'csrf' => $m[1], 'username' => "' OR '1'='1", 'password' => 'x',
     ]);
-    assert_contains('Identifiants incorrects', $res->body, 'aucune session ouverte par injection');
-    assert_true((int) db()->query('SELECT COUNT(*) FROM users')->fetchColumn() > 0, 'table users intacte');
+    assert_contains('Identifiants incorrects', $res->body, 'no session opened by injection');
+    assert_true((int) db()->query('SELECT COUNT(*) FROM users')->fetchColumn() > 0, 'users table intact');
 });
 
-test('le nom d\'utilisateur est échappé à l\'affichage', function () use ($base) {
-    // Un compte au nom piégé ne doit pas injecter de script dans index.php.
+test('the username is escaped when displayed', function () use ($base) {
+    // An account with a booby-trapped name must not inject script into index.php.
     $name = '<img src=x onerror=alert(1)>';
-    $hash = password_hash('motdepassetest', PASSWORD_DEFAULT);
+    $hash = password_hash('testpassword', PASSWORD_DEFAULT);
     db()->prepare('INSERT OR REPLACE INTO users (username, pass_hash, created) VALUES (?,?,?)')
         ->execute([$name, $hash, time()]);
 
     $c = new Http($base);
-    $c->login($name, 'motdepassetest');
+    $c->login($name, 'testpassword');
     $page = $c->get('/index.php')->body;
-    assert_not_contains('<img src=x', $page, 'balise non interprétée');
-    assert_contains('&lt;img src=x', $page, 'affichée échappée');
+    assert_not_contains('<img src=x', $page, 'tag not interpreted');
+    assert_contains('&lt;img src=x', $page, 'displayed escaped');
 
     db()->prepare('DELETE FROM users WHERE username = ?')->execute([$name]);
 });
 
 // ---------------------------------------------------------------------------
-group('Le choix de la langue n\'ouvre rien');
+group('Choosing the language opens nothing');
 
-test('un paramètre « lang » qui est un chemin ne charge aucun fichier', function () use ($http) {
+test('a "lang" parameter that is a path loads no file', function () use ($http) {
     foreach (['../config', '/etc/passwd', 'fr/../../config', '../../../../etc/passwd'] as $lang) {
         $res = $http->get('/index.php?lang=' . rawurlencode($lang));
-        assert_eq(200, $res->status, "« $lang » ne fait pas échouer la page");
-        assert_not_contains('STASHBIN_DB', $res->body, "« $lang » ne divulgue pas la configuration");
-        assert_contains('lang="fr"', $res->body, "« $lang » n'écrase pas la langue demandée");
+        assert_eq(200, $res->status, "\"$lang\" does not break the page");
+        assert_not_contains('STASHBIN_DB', $res->body, "\"$lang\" does not leak the configuration");
+        assert_contains('lang="fr"', $res->body, "\"$lang\" does not override the requested language");
     }
 });
 
-test('une langue que l\'on ne sait pas servir donne l\'anglais, jamais un dictionnaire vide', function () use ($base) {
-    // Le repli doit être une vraie langue : servi vide, l'interface afficherait
-    // ses identifiants de clés à l'écran.
-    // login.php plutôt qu'index.php : le client n'a pas de session, et une
-    // redirection ne renverrait aucun corps à inspecter.
-    $muet = new Http($base, language: null);
+test('a language we cannot serve yields English, never an empty dictionary', function () use ($base) {
+    // The fallback must be a real language: served empty, the interface would
+    // show its key identifiers on screen.
+    // login.php rather than index.php: the client has no session, and a
+    // redirect would return no body to inspect.
+    $silent = new Http($base, language: null);
     foreach ([null, 'de, es', 'xx-yy'] as $header) {
-        $res = $muet->request('GET', '/login.php', null, $header === null ? [] : ['Accept-Language' => $header]);
-        assert_contains('lang="en"', $res->body, 'anglais servi faute de mieux');
-        assert_contains('Sign in', $res->body, 'libellés effectivement traduits');
-        assert_not_contains('login.submit', $res->body, 'aucune clé brute affichée');
-        assert_not_contains('login.intro', $res->body, 'aucune clé brute affichée');
+        $res = $silent->request('GET', '/login.php', null, $header === null ? [] : ['Accept-Language' => $header]);
+        assert_contains('lang="en"', $res->body, 'English served for want of better');
+        assert_contains('Sign in', $res->body, 'labels really translated');
+        assert_not_contains('login.submit', $res->body, 'no raw key displayed');
+        assert_not_contains('login.intro', $res->body, 'no raw key displayed');
     }
 });
 
-test('un paramètre « lang » piégé n\'est pas réinjecté brut dans la page', function () use ($http) {
-    // La valeur revient dans l'attribut « lang » et dans les liens que la page
-    // fabrique : elle doit y arriver échappée, ou pas du tout.
+test('a booby-trapped "lang" parameter is not echoed raw into the page', function () use ($http) {
+    // The value comes back in the "lang" attribute and in the links the page
+    // builds: it must arrive there escaped, or not at all.
     $res = $http->get('/index.php?lang=' . rawurlencode('"><script>alert(1)</script>'));
-    assert_not_contains('<script>alert(1)', $res->body, 'aucun script injecté');
+    assert_not_contains('<script>alert(1)', $res->body, 'no script injected');
 });
 
-test('un en-tête Accept-Language hostile ne perturbe pas la page', function () use ($http) {
+test('a hostile Accept-Language header does not disturb the page', function () use ($http) {
     foreach (['<script>alert(1)</script>', '../../etc/passwd', str_repeat('fr,', 500) . 'fr'] as $header) {
         $res = $http->request('GET', '/index.php', null, ['Accept-Language' => $header]);
-        assert_eq(200, $res->status, 'page servie malgré un en-tête aberrant');
-        assert_not_contains('<script>alert(1)', $res->body, 'aucun script injecté');
+        assert_eq(200, $res->status, 'page served despite an aberrant header');
+        assert_not_contains('<script>alert(1)', $res->body, 'no script injected');
     }
 });
 
-test('les pages annoncent que leur contenu dépend de la langue', function () use ($http) {
-    // Sans « Vary », un cache intermédiaire servirait à tous la langue du
-    // premier visiteur — y compris sur la page de connexion.
-    foreach (['/index.php', '/view.php?id=inexistant', '/api.php?id=' . str_repeat('z', 16)] as $path) {
+test('the pages announce that their content depends on the language', function () use ($http) {
+    // Without "Vary", an intermediate cache would serve everyone the first
+    // visitor's language — including on the sign-in page.
+    foreach (['/index.php', '/view.php?id=nonexistent', '/api.php?id=' . str_repeat('z', 16)] as $path) {
         $res = $http->get($path);
-        assert_contains('Accept-Language', (string) $res->header('Vary'), "« $path » pose l'en-tête Vary");
+        assert_contains('Accept-Language', (string) $res->header('Vary'), "\"$path\" sets the Vary header");
     }
 });
 
-test('la langue ne change ni le chiffrement ni ce que le serveur conserve', function () use ($http, $token) {
-    // La traduction est de la présentation : elle ne doit toucher à rien de ce
-    // que le produit promet.
+test('the language changes neither the encryption nor what the server keeps', function () use ($http, $token) {
+    // Translation is presentation: it must touch nothing the product promises.
     $payload = ['v' => 1, 'iv' => 'SVYxMjM', 'salt' => 'U0VMMTIz', 'iter' => 310000, 'pwd' => 0, 'ct' => 'Q0lQSEVS'];
     $id = $http->createSecret(['payload' => $payload], $token)->json()['id'];
     $got = $http->request('GET', '/api.php?id=' . $id . '&lang=en', null, ['Accept-Language' => 'en'])->json();
-    assert_eq($payload, $got['payload'], 'payload restitué à l\'identique en anglais');
+    assert_eq($payload, $got['payload'], 'payload returned unchanged in English');
 
     $stored = db()->query('SELECT payload FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
-    assert_eq($payload, json_decode((string) $stored, true), 'base inchangée');
+    assert_eq($payload, json_decode((string) $stored, true), 'database unchanged');
 });
 
-exit(summary('Régressions de sécurité'));
+exit(summary('Security regressions'));

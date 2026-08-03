@@ -1,73 +1,73 @@
-# Jeu de test
+# Test set
 
-Une commande, un code de sortie : `0` si tout passe, `1` si quoi que ce soit échoue.
+One command, one exit code: `0` if everything passes, `1` if anything fails.
 
 ```bash
 ./tests/run.sh
 ```
 
-Le lanceur construit l'image, démarre une instance neuve, crée un compte de test, joue les cinq suites, affiche un bilan et détruit tout. Il n'y a rien à préparer et rien à nettoyer après.
+The runner builds the image, starts a fresh instance, creates a test account, plays the five suites, prints a summary and tears everything down. There is nothing to set up and nothing to clean afterwards.
 
 ## Options
 
-| Option | Effet |
+| Option | Effect |
 |---|---|
-| *(aucune)* | Tout, sur PHP 8.4 + Apache |
-| `--version 8.6` | Sur une autre version de PHP (8.3, 8.4, 8.5, 8.6) |
-| `--server nginx` | Derrière nginx + PHP-FPM plutôt qu'Apache |
-| `--no-browser` | Sans les tests navigateur — plus rapide, mais laisse la cryptographie sans filet |
-| `--matrix` | Suites PHP sur les huit combinaisons version × serveur |
-| `--keep` | Laisse l'instance en vie pour inspection après coup |
+| *(none)* | Everything, on PHP 8.4 + Apache |
+| `--version 8.6` | On another PHP version (8.3, 8.4, 8.5, 8.6) |
+| `--server nginx` | Behind nginx + PHP-FPM rather than Apache |
+| `--no-browser` | Without the browser tests — faster, but leaves the cryptography without a net |
+| `--matrix` | PHP suites on all eight version × server combinations |
+| `--keep` | Leaves the instance alive for inspection afterwards |
 
-## Ce qui est couvert
+## What is covered
 
-**183 tests** répartis en cinq suites.
+**183 tests** across five suites.
 
-| Suite | Tests | Portée |
+| Suite | Tests | Scope |
 |---|--:|---|
-| `unit.test.php` | 56 | Fonctions de `src/bootstrap.php` sans passer par HTTP : échappement, configuration et surcharges d'environnement, schéma de base, purge des expirés, jetons CSRF, négociation de la langue et dictionnaires |
-| `api.test.php` | 44 | Règles métier via HTTP : authentification, CSRF, validation du payload, durées de vie, destruction après lecture, liens de suppression, méthodes refusées, codes d'erreur et langue de la réponse |
-| `security.test.php` | 28 | Garanties annoncées par le README : rien hors de `public/`, en-têtes de durcissement, session et fixation, stockage haché, injections, et le fait que le choix de la langue n'ouvre rien |
-| `noauth.test.php` | 19 | Instance ouverte (`auth` à false) : création sans compte, CSRF toujours exigée, suppression par le seul jeton, et tout ce qui ne bouge pas |
-| `browser.test.mjs` | 36 | Chromium réel : cryptographie de bout en bout, parcours d'interface complets, et interface servie dans la langue du navigateur |
+| `unit.test.php` | 56 | Functions in `src/bootstrap.php` without going through HTTP: escaping, configuration and environment overrides, database schema, purging expired secrets, CSRF tokens, language negotiation and dictionaries |
+| `api.test.php` | 44 | Business rules over HTTP: authentication, CSRF, payload validation, lifetimes, burn after reading, deletion links, refused methods, error codes and the language of the response |
+| `security.test.php` | 28 | The guarantees the README makes: nothing outside `public/`, hardening headers, session and fixation, hashed storage, injection, and the fact that choosing a language opens nothing |
+| `noauth.test.php` | 19 | Open instance (`auth` set to false): creation without an account, CSRF still required, deletion by the token alone, and everything that does not move |
+| `browser.test.mjs` | 36 | Real Chromium: end-to-end cryptography, complete interface journeys, and the interface served in the browser's language |
 
-Les tests PHP s'exécutent **dans le conteneur applicatif**, sous l'identité `www-data`. Ils peuvent donc confronter la réponse HTTP à ce qui est réellement écrit en base — c'est ainsi qu'on vérifie qu'un jeton de suppression est bien stocké haché, ou qu'un payload n'est jamais déchiffré côté serveur.
+The PHP tests run **inside the application container**, under the `www-data` identity. They can therefore compare the HTTP response with what is actually written to the database — that is how we check that a deletion token really is stored hashed, or that a payload is never decrypted server-side.
 
-`noauth.test.php` a besoin d'un serveur démarré avec `STASHBIN_AUTH=0` : le réglage est lu au démarrage, il n'y a pas de bascule à chaud. Le lanceur remplace donc l'instance le temps de cette suite, puis en redémarre une ordinaire pour les tests navigateur. En mode `--matrix`, la suite est rejouée sur les huit combinaisons : la surcharge par variable d'environnement passe par mod_php d'un côté et PHP-FPM de l'autre, ce qui n'est pas le même chemin.
+`noauth.test.php` needs a server started with `STASHBIN_AUTH=0`: the setting is read at startup, there is no hot switch. The runner therefore replaces the instance for the duration of that suite, then starts an ordinary one again for the browser tests. In `--matrix` mode the suite is replayed on all eight combinations: the environment-variable override goes through mod_php on one side and PHP-FPM on the other, which is not the same path.
 
-Les tests navigateur pilotent Chromium sur l'application réelle. Ils couvrent la partie que rien d'autre n'exerce : `deriveKey`, `encryptText` et `decryptPayload` de `public/assets/stashbin.js`, appelées directement dans la page, puis les parcours complets — création, relecture, mot de passe, destruction après lecture, lien de suppression, et le parcours entier rejoué dans un navigateur anglophone.
+The browser tests drive Chromium against the real application. They cover the part nothing else exercises: `deriveKey`, `encryptText` and `decryptPayload` from `public/assets/stashbin.js`, called directly in the page, then the complete journeys — creation, reading back, password, burn after reading, deletion link, and the whole journey replayed in an English-speaking browser.
 
-La langue est **fixée explicitement des deux côtés** : le contexte Chromium par `locale: 'fr-FR'`, le client HTTP de `lib.php` par un en-tête `Accept-Language: fr` posé sur chaque requête. L'interface suit désormais la langue demandée, et le repli du serveur sert l'anglais — laisser la langue au hasard rendrait imprévisibles tous les libellés affirmés par les tests.
+The language is **set explicitly on both sides**: the Chromium context through `locale: 'fr-FR'`, the HTTP client of `lib.php` through an `Accept-Language: fr` header on every request. The interface now follows the language requested, and the server's fallback serves English — leaving the language to chance would make every label the tests assert unpredictable.
 
-Pour éprouver le repli lui-même, construisez un client muet : `new Http($base, language: null)` n'envoie aucun en-tête de langue. Les tests qui vérifient une traduction ouvrent en outre leur propre contexte Chromium, sans session, sans quoi `login.php` redirigerait vers la page de création.
+To test the fallback itself, build a silent client: `new Http($base, language: null)` sends no language header at all. Tests that check a translation additionally open their own Chromium context, without a session, otherwise `login.php` would redirect to the creation page.
 
-## Deux points de conception
+## Two design points
 
-**Le navigateur partage l'espace réseau du conteneur applicatif.** `crypto.subtle` n'existe que dans un « contexte sécurisé » : HTTPS, ou une origine loopback. En servant l'application sur `127.0.0.1` du point de vue du navigateur, on obtient un contexte sûr sans fabriquer de certificat ni passer de drapeau de contournement à Chromium. C'est aussi la démonstration concrète que **HTTPS n'est pas un conseil mais une condition de fonctionnement** : sans contexte sécurisé, StashBin ne peut rien chiffrer du tout.
+**The browser shares the application container's network namespace.** `crypto.subtle` only exists in a "secure context": HTTPS, or a loopback origin. By serving the application on `127.0.0.1` from the browser's point of view, we get a secure context without making a certificate or passing Chromium a bypass flag. It is also the concrete demonstration that **HTTPS is not advice but a condition of operation**: without a secure context, StashBin cannot encrypt anything at all.
 
-**Le paquet npm de Playwright est installé dans une image dérivée.** L'image officielle fournit les navigateurs mais pas le module qui les pilote ; `tests/Containerfile.browser` l'ajoute une fois pour toutes, pour qu'aucune exécution ne dépende du réseau.
+**Playwright's npm package is installed in a derived image.** The official image ships the browsers but not the module that drives them; `tests/Containerfile.browser` adds it once and for all, so that no run depends on the network.
 
-## Écrire un test
+## Writing a test
 
-Les fichiers PHP utilisent `tests/lib.php`, un socle d'une centaine de lignes — ni Composer, ni PHPUnit, conformément au parti pris du projet.
+The PHP files use `tests/lib.php`, a hundred-line foundation — neither Composer nor PHPUnit, in keeping with the project's stance.
 
 ```php
-group('Ce que je vérifie');
+group('What I am checking');
 
-test('la description se lit comme une phrase', function () use ($http, $token) {
+test('the description reads like a sentence', function () use ($http, $token) {
     $res = $http->createSecret(['expire' => '1h'], $token);
-    assert_eq(201, $res->status, 'création acceptée');
+    assert_eq(201, $res->status, 'creation accepted');
 });
 ```
 
-Assertions disponibles : `assert_true`, `assert_eq`, `assert_contains`, `assert_not_contains`, `assert_matches`, `assert_throws`. Chacune prend en dernier argument une description de ce qui est attendu, reprise telle quelle dans le message d'échec.
+Available assertions: `assert_true`, `assert_eq`, `assert_contains`, `assert_not_contains`, `assert_matches`, `assert_throws`. Each takes as its last argument a description of what is expected, reproduced verbatim in the failure message.
 
-`Http` gère les cookies de session : `login()`, `csrfToken()`, `createSecret()`, `get()`, `post()`, et `request()` avec l'option `rawPath: true` pour que le serveur voie les `..` sans que curl les résolve.
+`Http` handles session cookies: `login()`, `csrfToken()`, `createSecret()`, `get()`, `post()`, and `request()` with the `rawPath: true` option so the server sees `..` without curl resolving it.
 
-## Vérifier que le jeu de test sert à quelque chose
+## Checking that the test set is worth anything
 
-Un jeu de test qui ne tombe jamais ne prouve rien. Celui-ci a été éprouvé par mutation : dix-huit régressions ont été introduites une à une dans le code, et **les dix-huit ont été détectées** — contrôle CSRF retiré, création ouverte aux anonymes, secret à lecture unique non détruit, jeton de suppression stocké en clair, limite de taille supprimée, purge désactivée, échappement HTML neutralisé, CSP affaiblie, cookie sans `HttpOnly`, session non régénérée à la connexion, itérations PBKDF2 abaissées à 1 000, clé d'URL réduite à 64 bits, `load_lang()` privée de son garde-fou de chemin, `?lang=` ignoré par la négociation, `Vary: Accept-Language` retiré, clé absente de la traduction anglaise, erreur d'API privée de son code stable, et JavaScript comparant le message d'erreur plutôt que le code.
+A test set that never fails proves nothing. This one has been validated by mutation: eighteen regressions were introduced into the code one at a time, and **all eighteen were caught** — CSRF check removed, creation opened to anonymous visitors, read-once secret not destroyed, deletion token stored in the clear, size limit removed, purging disabled, HTML escaping neutralised, CSP weakened, cookie without `HttpOnly`, session not regenerated on sign-in, PBKDF2 iterations lowered to 1,000, URL key reduced to 64 bits, `load_lang()` stripped of its path guard, `?lang=` ignored by negotiation, `Vary: Accept-Language` removed, a key missing from the English translation, an API error stripped of its stable code, and JavaScript comparing the error message rather than the code.
 
-La dernière mérite un mot : c'est exactement la régression qu'a produite la première traduction. `showError()` reposait sur `err.message === 'introuvable'`, ce qui a cessé de fonctionner dès que le message a pu être en anglais. Le contrat est désormais le champ `code`, et un test navigateur le vérifie.
+That last one deserves a word: it is exactly the regression the first translation produced. `showError()` rested on `err.message === 'introuvable'`, which stopped working the moment the message could be in English. The contract is now the `code` field, and a browser test checks it.
 
-Il vaut la peine de refaire l'exercice après avoir ajouté une fonctionnalité : cassez-la volontairement et vérifiez qu'au moins un test s'en aperçoit.
+It is worth repeating the exercise after adding a feature: break it deliberately and check that at least one test notices.

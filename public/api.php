@@ -7,7 +7,7 @@ vary_language();
 
 $method = $_SERVER['REQUEST_METHOD'];
 
-// --- Lecture (publique) -----------------------------------------------------
+// --- Reading (public) -------------------------------------------------------
 if ($method === 'GET') {
     $id = $_GET['id'] ?? '';
     if (!preg_match('/^[A-Za-z0-9_-]{8,32}$/', $id)) {
@@ -25,9 +25,9 @@ if ($method === 'GET') {
         json_error(404, 'not_found');
     }
 
-    // Suppression via le jeton du créateur — réservée aux utilisateurs
-    // authentifiés : un lien de suppression qui fuite est inutilisable seul.
-    // Sans authentification, le jeton redevient le seul justificatif.
+    // Deletion through the creator's token — restricted to authenticated users:
+    // a deletion link that leaks is useless on its own. Without authentication,
+    // the token becomes the sole credential again.
     if (isset($_GET['delete'])) {
         if (!is_authorized()) {
             header('Location: login.php' . lang_param());
@@ -40,8 +40,8 @@ if ($method === 'GET') {
         json_out(200, ['deleted' => true]);
     }
 
-    // Sonde de métadonnées : permet d'afficher une confirmation avant de
-    // consommer un paste à lecture unique.
+    // Metadata probe: lets a confirmation be shown before a read-once paste is
+    // consumed.
     if (isset($_GET['meta'])) {
         json_out(200, ['burn' => (bool) $paste['burn']]);
     }
@@ -55,13 +55,13 @@ if ($method === 'GET') {
     ]);
 }
 
-// --- Création (authentifiée, sauf configuration contraire) ------------------
+// --- Creation (authenticated, unless configured otherwise) ------------------
 if ($method === 'POST') {
     if (!is_authorized()) {
         json_error(401, 'unauthorized');
     }
-    // Le contrôle CSRF ne dépend pas de l'authentification : il empêche un
-    // autre site de faire créer des secrets par le navigateur d'un visiteur.
+    // The CSRF check does not depend on authentication: it stops another site
+    // from having a visitor's browser create secrets.
     if (!check_csrf($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '')) {
         json_error(403, 'bad_csrf');
     }
@@ -75,8 +75,8 @@ if ($method === 'POST') {
         json_error(400, 'bad_request');
     }
 
-    // Le payload est opaque pour le serveur (chiffré côté client) ; on vérifie
-    // seulement qu'il a la forme attendue.
+    // The payload is opaque to the server (encrypted client-side); we only
+    // check that it has the expected shape.
     $payload = $body['payload'];
     foreach (['v', 'iv', 'salt', 'iter', 'pwd', 'ct'] as $field) {
         if (!array_key_exists($field, $payload)) {

@@ -5,8 +5,8 @@ require dirname(__DIR__) . '/src/bootstrap.php';
 security_headers();
 vary_language();
 
-// Sans authentification, il n'y a rien à quoi se connecter : pas de formulaire,
-// et pas même de session ouverte au passage.
+// Without authentication there is nothing to sign in to: no form, and not even
+// a session opened in passing.
 if (!auth_enabled()) {
     header('Location: index.php' . lang_param());
     exit;
@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: index.php' . lang_param());
             exit;
         }
-        // Freine les tentatives de force brute.
+        // Slows brute-force attempts down.
         sleep(1);
         $error = t('login.bad_credentials');
     }

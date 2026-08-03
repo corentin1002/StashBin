@@ -2,20 +2,20 @@
 #
 # L'image officielle Playwright fournit les navigateurs (via
 # PLAYWRIGHT_BROWSERS_PATH) mais pas le paquet npm qui pilote. On l'installe
-# ici une fois pour toutes : sans cela, chaque exécution paierait un
-# « npm install » et dépendrait du réseau.
+# here once and for all: without it, every run would pay for an "npm install"
+# and depend on the network.
 #
-# La version du paquet doit correspondre à celle des navigateurs de l'image de
-# base, d'où les deux arguments liés.
+# The package version must match the browsers shipped in the base image, hence
+# the two linked arguments.
 
 ARG PLAYWRIGHT_TAG=v1.50.0-noble
 FROM mcr.microsoft.com/playwright:${PLAYWRIGHT_TAG}
 
 ARG PLAYWRIGHT_VERSION=1.50.0
 
-# Les modules ES ignorent NODE_PATH : la résolution remonte l'arborescence à la
-# recherche d'un node_modules. Le script de test est donc copié dans ce
-# répertoire au moment de l'exécution, à côté des dépendances.
+# ES modules ignore NODE_PATH: resolution walks up the tree looking for a
+# node_modules. The test script is therefore copied into this directory at run
+# time, next to the dependencies.
 WORKDIR /opt/harness
 RUN npm init -y >/dev/null 2>&1 \
     && npm install --no-audit --no-fund --loglevel=error "playwright@${PLAYWRIGHT_VERSION}"

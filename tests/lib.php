@@ -1,9 +1,9 @@
 <?php
-// Socle commun aux fichiers de test : assertions, compte rendu, client HTTP.
+// Common ground for the test files: assertions, reporting, HTTP client.
 //
-// Chaque fichier de test appelle group() puis test(), et se termine par
-// summary() dont la valeur de retour sert de code de sortie au processus.
-// Aucune dépendance externe : ni Composer, ni PHPUnit.
+// Every test file calls group() then test(), and ends with summary() whose
+// return value becomes the process's exit code. No external dependency:
+// neither Composer nor PHPUnit.
 declare(strict_types=1);
 
 final class Report
@@ -63,7 +63,7 @@ function assert_eq(mixed $expected, mixed $actual, string $what): void
 {
     if ($expected !== $actual) {
         throw new AssertionFailed(
-            "$what\nattendu : " . render($expected) . "\nobtenu  : " . render($actual)
+            "$what\nexpected: " . render($expected) . "\ngot     : " . render($actual)
         );
     }
 }
@@ -72,7 +72,7 @@ function assert_contains(string $needle, string $haystack, string $what): void
 {
     if (!str_contains($haystack, $needle)) {
         throw new AssertionFailed(
-            "$what\ncherché : " . render($needle) . "\ndans    : " . render($haystack)
+            "$what\nlooked for: " . render($needle) . "\nin        : " . render($haystack)
         );
     }
 }
@@ -81,7 +81,7 @@ function assert_not_contains(string $needle, string $haystack, string $what): vo
 {
     if (str_contains($haystack, $needle)) {
         throw new AssertionFailed(
-            "$what\nne devait pas contenir : " . render($needle) . "\ndans : " . render($haystack)
+            "$what\nshould not have contained: " . render($needle) . "\nin: " . render($haystack)
         );
     }
 }
@@ -90,7 +90,7 @@ function assert_matches(string $pattern, string $subject, string $what): void
 {
     if (!preg_match($pattern, $subject)) {
         throw new AssertionFailed(
-            "$what\nmotif  : $pattern\nsujet  : " . render($subject)
+            "$what\npattern: $pattern\nsubject: " . render($subject)
         );
     }
 }
@@ -102,7 +102,7 @@ function assert_throws(callable $fn, string $what): void
     } catch (Throwable) {
         return;
     }
-    throw new AssertionFailed("$what (aucune exception levée)");
+    throw new AssertionFailed("$what (no exception thrown)");
 }
 
 function summary(string $suite): int
@@ -111,10 +111,10 @@ function summary(string $suite): int
     $total = Report::$passed + $failed;
     fwrite(STDOUT, "\n");
     if ($failed === 0) {
-        fwrite(STDOUT, '  ' . c('32', "$suite : $total tests, tous réussis") . "\n");
+        fwrite(STDOUT, '  ' . c('32', "$suite: $total tests, all passed") . "\n");
         return 0;
     }
-    fwrite(STDOUT, '  ' . c('31', "$suite : $total tests, $failed en échec") . "\n");
+    fwrite(STDOUT, '  ' . c('31', "$suite: $total tests, $failed failed") . "\n");
     foreach (Report::$failures as [$g, $n, $m]) {
         fwrite(STDOUT, '    - ' . ($g !== '' ? "$g / " : '') . "$n\n");
     }
@@ -122,7 +122,7 @@ function summary(string $suite): int
 }
 
 // ---------------------------------------------------------------------------
-// Client HTTP minimal, avec gestion des cookies de session.
+// Minimal HTTP client, with session cookie handling.
 // ---------------------------------------------------------------------------
 
 final class Response
@@ -138,13 +138,13 @@ final class Response
         return json_decode($this->body, true);
     }
 
-    /** Renvoie la première valeur de l'en-tête (comparaison insensible à la casse). */
+    /** Returns the header's first value (case-insensitive comparison). */
     public function header(string $name): ?string
     {
         return $this->headers[strtolower($name)][0] ?? null;
     }
 
-    /** @return list<string> toutes les valeurs de l'en-tête */
+    /** @return list<string> every value of the header */
     public function headerAll(string $name): array
     {
         return $this->headers[strtolower($name)] ?? [];
@@ -155,16 +155,16 @@ final class Http
 {
     private string $jar;
 
-    // La langue est fixée explicitement, et non laissée au repli du serveur :
-    // les tests affirment des libellés français, et le repli, lui, sert
-    // l'anglais. Passer null n'envoie aucun en-tête — c'est ainsi qu'on éprouve
-    // le repli lui-même.
+    // The language is set explicitly rather than left to the server's fallback:
+    // the tests assert French labels, while the fallback serves English.
+    // Passing null sends no header at all — that is how the fallback itself
+    // gets tested.
     public function __construct(private string $base, private ?string $language = 'fr')
     {
         $this->jar = tempnam(sys_get_temp_dir(), 'stashbin-cookies-');
     }
 
-    /** Repart d'une session vierge (utile pour tester l'accès anonyme). */
+    /** Starts again from a blank session (useful for testing anonymous access). */
     public function forgetCookies(): void
     {
         file_put_contents($this->jar, '');
@@ -200,8 +200,8 @@ final class Http
             CURLOPT_COOKIEJAR => $this->jar,
             CURLOPT_COOKIEFILE => $this->jar,
             CURLOPT_TIMEOUT => 30,
-            // Laisse le serveur voir « .. » tel quel, sinon curl le résout
-            // lui-même et la tentative de remontée n'est jamais transmise.
+            // Lets the server see ".." as-is; otherwise curl resolves it
+            // itself and the climb-out attempt is never transmitted.
             CURLOPT_PATH_AS_IS => $rawPath,
         ]);
         if ($body !== null) {
@@ -220,7 +220,7 @@ final class Http
 
         $raw = curl_exec($ch);
         if ($raw === false) {
-            throw new RuntimeException('requête HTTP impossible : ' . curl_error($ch) . " ($method $url)");
+            throw new RuntimeException('HTTP request failed: ' . curl_error($ch) . " ($method $url)");
         }
         $status = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
@@ -238,31 +238,31 @@ final class Http
         return new Response($status, $headers, substr($raw, $headerSize));
     }
 
-    /** Ouvre une session pour ce compte. Renvoie le jeton CSRF de la page de création. */
+    /** Opens a session for this account. Returns the CSRF token of the creation page. */
     public function login(string $user, string $password): string
     {
         $page = $this->get('/login.php')->body;
         if (!preg_match('/name="csrf" value="([^"]+)"/', $page, $m)) {
-            throw new RuntimeException('jeton CSRF introuvable sur login.php');
+            throw new RuntimeException('no CSRF token found on login.php');
         }
         $res = $this->post('/login.php', ['csrf' => $m[1], 'username' => $user, 'password' => $password]);
         if ($res->status !== 302) {
-            throw new RuntimeException("connexion refusée pour « $user » (HTTP {$res->status})");
+            throw new RuntimeException("sign-in refused for \"$user\" (HTTP {$res->status})");
         }
         return $this->csrfToken();
     }
 
-    /** Jeton CSRF publié par index.php à destination du JavaScript. */
+    /** CSRF token published by index.php for the JavaScript. */
     public function csrfToken(): string
     {
         $page = $this->get('/index.php')->body;
         if (!preg_match('/csrf-token" content="([^"]+)"/', $page, $m)) {
-            throw new RuntimeException('jeton CSRF introuvable sur index.php');
+            throw new RuntimeException('no CSRF token found on index.php');
         }
         return $m[1];
     }
 
-    /** Crée un secret et renvoie la réponse JSON décodée. */
+    /** Creates a secret and returns the decoded JSON response. */
     public function createSecret(array $overrides = [], ?string $token = null): Response
     {
         $payload = ($overrides['payload'] ?? null) === null
