@@ -56,6 +56,7 @@ Le code est monté depuis le projet : toute modification est visible immédiatem
 ./containers/stashbin.sh up 8.5 nginx  # autre version, autre serveur
 ./containers/stashbin.sh down          # arrêter
 ./containers/stashbin.sh reset         # repartir de zéro
+./containers/stashbin.sh clean         # tout retirer une fois terminé
 ```
 
 `./containers/stashbin.sh test` rejoue le parcours complet — connexion, création, relecture, destruction après lecture — sur les huit combinaisons de version et de serveur. Voir [`containers/README.md`](containers/README.md).
@@ -167,7 +168,8 @@ Tout se passe dans `config.php` : durées d'expiration proposées, taille maxima
 ```
 config.php          réglages (expirations, taille max, chemin de la base)
 containers/         banc d'essai multi-versions (voir containers/README.md)
-├── stashbin.sh     pilote unique : up, user, logs, down, reset, list, test
+├── stashbin.sh     pilote unique : up, user, logs, down, reset, clean,
+│                   list, test
 ├── Containerfile.apache    Apache + mod_php
 ├── Containerfile.nginx     nginx + PHP-FPM
 ├── nginx.conf              configuration du serveur nginx

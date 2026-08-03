@@ -19,7 +19,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 - Stockage SQLite sans dépendance externe, schéma créé automatiquement.
 - Interface en français, thème clair/sombre automatique.
 - Banc d'essai `containers/` : images Apache + mod_php et nginx + PHP-FPM, paramétrées par version de PHP (8.3 à 8.6), avec le code monté en lecture seule et la base SQLite dans un volume dédié (chemin surchargeable via `STASHBIN_DB`).
-- `containers/stashbin.sh` : pilote unique du banc d'essai (`up`, `user`, `logs`, `down`, `reset`, `list`, `test`). `user` relaie les sous-commandes de `bin/user.php` (`add`, `passwd`, `del`, `list`) dans le conteneur, sous l'identité `www-data`. `test` rejoue le parcours applicatif complet sur les huit combinaisons version × serveur et échoue si l'une d'elles régresse.
+- `containers/stashbin.sh` : pilote unique du banc d'essai (`up`, `user`, `logs`, `down`, `reset`, `clean`, `list`, `test`). `clean` retire conteneurs, volumes et images produits par le banc — et rien d'autre ; `clean --all` y ajoute les images de base `php:*` téléchargées. `user` relaie les sous-commandes de `bin/user.php` (`add`, `passwd`, `del`, `list`) dans le conteneur, sous l'identité `www-data`. `test` rejoue le parcours applicatif complet sur les huit combinaisons version × serveur et échoue si l'une d'elles régresse.
 - Compatibilité vérifiée de PHP 8.1 à 8.6 (8.6 en release candidate), sous Apache comme sous nginx : aucune dépréciation ni avertissement.
 - En-têtes de sécurité : CSP stricte, `X-Content-Type-Options`, `Referrer-Policy`, cookies `HttpOnly`/`SameSite`.
 
