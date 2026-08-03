@@ -31,6 +31,7 @@ Ensuite, un compte est nécessaire pour créer des secrets :
 | `logs [-f]` | Journaux du conteneur |
 | `down` | Arrête l'instance |
 | `reset` | Efface la base (comptes et secrets) |
+| `clean [--all]` | Retire conteneurs, volumes et images du banc d'essai |
 | `list` | Combinaisons disponibles et état actuel |
 | `test [version…]` | Rejoue le parcours complet sur toute la matrice |
 
@@ -53,6 +54,17 @@ Pour chaque combinaison, le script construit l'image, démarre la pile et rejoue
   8.5  apache  OK (8.5.9)
   ...
 ```
+
+## Ranger après usage
+
+```bash
+./containers/stashbin.sh clean        # conteneurs, volumes et images construites ici
+./containers/stashbin.sh clean --all  # + les images de base php:* téléchargées
+```
+
+`clean` ne touche que ce que le banc d'essai a fabriqué : les conteneurs `stashbin-test` et `stashbin-selftest`, les volumes `stashbin-test-data` et `stashbin-selftest-data`, et les images `stashbin:<version>-<serveur>`. Un volume ou une image que vous avez créé par ailleurs n'est jamais concerné. La commande annonce chaque suppression réelle et répond « Rien à nettoyer » quand il n'y a rien à faire, donc elle peut se relancer sans risque.
+
+`--all` ajoute les tags officiels `php:<version>-apache` et `php:<version>-fpm` que le banc télécharge lui-même. Ce n'est pas une opération coûteuse à annuler : podman conserve les couches partagées, et un `up` suivant reconstruit en quelques secondes.
 
 ## Ce qu'il faut savoir
 

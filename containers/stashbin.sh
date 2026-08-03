@@ -12,6 +12,9 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CTX="$REPO/containers"
 NAME=stashbin-test           # une seule instance interactive à la fois
 VOLUME=stashbin-test-data    # comptes et secrets, conservés entre les lancements
+TEST_NAME=stashbin-selftest  # instance éphémère utilisée par « test »
+TEST_VOLUME=stashbin-selftest-data
+IMAGE_PREFIX=stashbin        # images construites ici : stashbin:<version>-<serveur>
 PORT="${PORT:-8081}"
 
 RED=$'\e[31m'; GREEN=$'\e[32m'; YELLOW=$'\e[33m'; BOLD=$'\e[1m'; OFF=$'\e[0m'
@@ -127,13 +130,69 @@ cmd_user() {
 cmd_logs() { podman logs "$@" "$NAME"; }
 
 cmd_down() {
-    podman rm -f "$NAME" >/dev/null 2>&1 && ok "Instance arrêtée." || info "Rien à arrêter."
+    if podman rm -f "$NAME" >/dev/null 2>&1; then
+        ok "Instance arrêtée."
+        info "Pour tout retirer (volumes et images) : $0 clean"
+    else
+        info "Rien à arrêter."
+    fi
 }
 
 cmd_reset() {
     cmd_down >/dev/null 2>&1 || true
     podman volume rm -f "$VOLUME" >/dev/null 2>&1 || true
     ok "Base effacée (comptes et secrets)."
+}
+
+# Retire tout ce que ce script a créé, et rien d'autre : les conteneurs et
+# volumes portent des noms qui nous sont propres, et les images sont filtrées
+# sur le préfixe stashbin:. Un volume ou une image que nous n'avons pas
+# fabriqué n'est jamais touché.
+cmd_clean() {
+    local all=0
+    case "${1:-}" in
+        "")     ;;
+        --all)  all=1 ;;
+        *)      die "Usage : $0 clean [--all]" ;;
+    esac
+
+    # « podman rm -f » réussit même sur une cible absente : on teste l'existence
+    # d'abord, pour que le compte rendu n'annonce que des suppressions réelles.
+    local removed=0
+
+    for c in "$NAME" "$TEST_NAME"; do
+        podman container exists "$c" 2>/dev/null || continue
+        podman rm -f "$c" >/dev/null 2>&1 && { info "conteneur $c"; removed=1; }
+    done
+
+    for v in "$VOLUME" "$TEST_VOLUME"; do
+        podman volume exists "$v" 2>/dev/null || continue
+        podman volume rm -f "$v" >/dev/null 2>&1 && { info "volume $v"; removed=1; }
+    done
+
+    local images
+    images=$(podman images --format '{{.Repository}}:{{.Tag}}' \
+             | grep -E "(^|/)${IMAGE_PREFIX}:[0-9]" || true)
+    if [[ -n $images ]]; then
+        while read -r img; do
+            podman rmi -f "$img" >/dev/null 2>&1 && { info "image $img"; removed=1; }
+        done <<< "$images"
+    fi
+
+    if (( all )); then
+        # Uniquement les tags officiels que ce banc d'essai télécharge lui-même.
+        for v in "${VERSIONS[@]}"; do
+            for s in "${SERVERS[@]}"; do
+                local tag="docker.io/library/php:$(php_tag "$v" "$s")"
+                podman image exists "$tag" 2>/dev/null || continue
+                podman rmi -f "$tag" >/dev/null 2>&1 && { info "image $tag"; removed=1; }
+            done
+        done
+    fi
+
+    (( removed )) || { info "Rien à nettoyer."; return 0; }
+    ok "Nettoyage terminé."
+    (( all )) || info "Les images de base php:* sont conservées (« $0 clean --all » pour les retirer aussi)."
 }
 
 cmd_list() {
@@ -206,7 +265,7 @@ cmd_test() {
     local versions=("$@"); (( $# )) || versions=("${VERSIONS[@]}")
     for v in "${versions[@]}"; do contains "$v" "${VERSIONS[@]}" || die "Version inconnue : « $v »"; done
 
-    local tport=${TEST_PORT:-8099} tname=stashbin-selftest tvol=stashbin-selftest-data
+    local tport=${TEST_PORT:-8099} tname=$TEST_NAME tvol=$TEST_VOLUME
     port_busy "$tport" && die "Le port $tport est occupé. Relancez avec : TEST_PORT=9099 $0 test"
 
     local rows=() failed=0
@@ -253,6 +312,8 @@ ${BOLD}StashBin — banc d'essai multi-versions${OFF}
   $0 logs [-f]                journaux du conteneur
   $0 down                     arrête l'instance
   $0 reset                    efface la base (comptes et secrets)
+  $0 clean [--all]            retire conteneurs, volumes et images du banc
+                              d'essai ; --all inclut les images de base php:*
   $0 list                     combinaisons disponibles et état
   $0 test [version…]          rejoue le parcours complet sur toute la matrice
 
@@ -267,6 +328,7 @@ case "${1:-}" in
     logs)  shift; cmd_logs "$@" ;;
     down)  cmd_down ;;
     reset) cmd_reset ;;
+    clean) shift; cmd_clean "$@" ;;
     list)  cmd_list ;;
     test)  shift; cmd_test "$@" ;;
     ""|-h|--help|help) usage ;;
