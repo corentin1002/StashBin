@@ -44,33 +44,44 @@ Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une dif
 ### Avec Podman (recommandé pour tester)
 
 ```bash
-podman build -t stashbin .
-podman run -d --name stashbin -p 8080:80 \
-    -v .:/var/www/stashbin:ro,Z \
-    -v stashbin-data:/var/lib/stashbin \
-    stashbin
-
-# créer un compte (en tant que www-data pour les droits sur la base)
-podman exec -it -u www-data stashbin php /var/www/stashbin/bin/user.php add alice
+./containers/stashbin.sh up          # PHP 8.4 + Apache
+./containers/stashbin.sh user alice  # créer un compte
 ```
 
-→ **http://localhost:8080**
+→ **http://127.0.0.1:8081**
 
-Le code est monté depuis le projet : toute modification est visible immédiatement, sans rebuild. La base SQLite vit dans le volume `stashbin-data`, hors du code.
+Le code est monté depuis le projet : toute modification est visible immédiatement, sans rebuild. La base SQLite vit dans un volume, hors du code.
 
 ```bash
-podman rm -f stashbin           # arrêter
-podman volume rm stashbin-data  # repartir de zéro
+./containers/stashbin.sh up 8.5 nginx  # autre version, autre serveur
+./containers/stashbin.sh down          # arrêter
+./containers/stashbin.sh reset         # repartir de zéro
 ```
+
+`./containers/stashbin.sh test` rejoue le parcours complet — connexion, création, relecture, destruction après lecture — sur les huit combinaisons de version et de serveur. Voir [`containers/README.md`](containers/README.md).
 
 ### Avec PHP seul
 
-Prérequis : PHP ≥ 8.1 avec `pdo_sqlite` (`php-cli` + `php-pdo` sur Fedora, `php-cli` + `php-sqlite3` sur Debian/Ubuntu).
+Prérequis : PHP ≥ 8.1 avec `pdo_sqlite` (`php-cli` + `php-pdo` sur Fedora, `php-cli` + `php-sqlite3` sur Debian/Ubuntu). Aucune dépendance Composer.
 
 ```bash
 php bin/user.php add alice          # créer un compte autorisé
 php -S localhost:8080 -t public     # serveur de développement
 ```
+
+## ✅ Compatibilité
+
+Vérifiée par exécution du parcours applicatif complet, sans aucune dépréciation ni avertissement :
+
+| PHP | 8.1 | 8.2 | 8.3 | 8.4 | 8.5 | 8.6 |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| Compatible | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+Sous **Apache + mod_php** comme sous **nginx + PHP-FPM** (testé de 8.3 à 8.6 pour les deux serveurs). PHP 8.6 est testé en *release candidate*, sa version finale étant attendue le 19 novembre 2026.
+
+PHP 8.3 n'est plus en support actif depuis le 31 décembre 2025 (correctifs de sécurité jusqu'au 31 décembre 2027) : **8.4 est le choix recommandé**, avec un support sécurité jusqu'au 31 décembre 2028.
+
+Un détail à connaître en montant depuis PHP 8.3 : à partir de 8.4, le coût bcrypt par défaut de `password_hash()` passe de 10 à 12. Les comptes existants continuent de fonctionner sans intervention, mais conservent l'ancien coût tant que leur mot de passe n'est pas changé.
 
 ## 📦 Déploiement en production
 
@@ -105,7 +116,20 @@ server {
     root /var/www/StashBin/public;
     index index.php;
 
+    # Impératif : nginx limite les corps de requête à 1 Mio par défaut et
+    # renvoie un 413 au-delà. Sans cette ligne, tout secret dépassant 1 Mio
+    # serait rejeté avant d'atteindre PHP, alors que config.php en autorise
+    # 2 Mio. Gardez cette valeur au-dessus de `max_size`.
+    client_max_body_size 8m;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
     location ~ \.php$ {
+        # try_files avant fastcgi_pass : sans lui, une URL de la forme
+        # /inexistant/x.php peut faire exécuter un autre fichier.
+        try_files $uri =404;
         include fastcgi_params;
         fastcgi_pass unix:/run/php/php-fpm.sock;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
@@ -123,7 +147,16 @@ php bin/user.php del <nom>      # révoquer
 php bin/user.php list           # lister
 ```
 
-(En conteneur : préfixer par `podman exec -it -u www-data stashbin` et utiliser le chemin `/var/www/stashbin/bin/user.php`.)
+En conteneur, les mêmes sous-commandes passent par le script du banc d'essai, qui les exécute sous l'identité `www-data` :
+
+```bash
+./containers/stashbin.sh user add alice
+./containers/stashbin.sh user passwd alice
+./containers/stashbin.sh user del alice
+./containers/stashbin.sh user list
+```
+
+> L'identité compte : un compte créé en `root` rend la base inaccessible en écriture au serveur web, et la panne n'apparaît qu'au moment de créer un secret — pas à la connexion.
 
 ## ⚙️ Configuration
 
@@ -133,7 +166,12 @@ Tout se passe dans `config.php` : durées d'expiration proposées, taille maxima
 
 ```
 config.php          réglages (expirations, taille max, chemin de la base)
-Containerfile       image de test Apache + mod_php
+containers/         banc d'essai multi-versions (voir containers/README.md)
+├── stashbin.sh     pilote unique : up, user, logs, down, reset, list, test
+├── Containerfile.apache    Apache + mod_php
+├── Containerfile.nginx     nginx + PHP-FPM
+├── nginx.conf              configuration du serveur nginx
+└── *-entrypoint.sh         démarrage des deux piles
 public/             document root : pages, API, assets
 ├── index.php       création de secret (authentifié)
 ├── view.php        lecture publique
@@ -143,6 +181,8 @@ public/             document root : pages, API, assets
 src/bootstrap.php   base de données, sessions, CSRF, helpers
 bin/user.php        gestion des comptes en CLI
 data/               base SQLite (créée automatiquement)
+└── .htaccess       « Require all denied » : garde-fou si le document root
+                    est mal configuré et pointe sur la racine du projet
 ```
 
 ## 🛡 Modèle de sécurité
