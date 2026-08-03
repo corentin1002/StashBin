@@ -18,9 +18,16 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 - Gestion des comptes en ligne de commande (`bin/user.php` : `add`, `passwd`, `del`, `list`).
 - Stockage SQLite sans dépendance externe, schéma créé automatiquement.
 - Interface en français, thème clair/sombre automatique.
-- `Containerfile` Apache + mod_php pour tester avec Podman : code monté en lecture seule, base SQLite dans un volume dédié (chemin surchargeable via `STASHBIN_DB`).
+- Banc d'essai `containers/` : images Apache + mod_php et nginx + PHP-FPM, paramétrées par version de PHP (8.3 à 8.6), avec le code monté en lecture seule et la base SQLite dans un volume dédié (chemin surchargeable via `STASHBIN_DB`).
+- `containers/stashbin.sh` : pilote unique du banc d'essai (`up`, `user`, `logs`, `down`, `reset`, `list`, `test`). `user` relaie les sous-commandes de `bin/user.php` (`add`, `passwd`, `del`, `list`) dans le conteneur, sous l'identité `www-data`. `test` rejoue le parcours applicatif complet sur les huit combinaisons version × serveur et échoue si l'une d'elles régresse.
+- Compatibilité vérifiée de PHP 8.1 à 8.6 (8.6 en release candidate), sous Apache comme sous nginx : aucune dépréciation ni avertissement.
 - En-têtes de sécurité : CSP stricte, `X-Content-Type-Options`, `Referrer-Policy`, cookies `HttpOnly`/`SameSite`.
+
+### Corrigé
+
+- L'exemple de configuration nginx pour la production ne définissait pas `client_max_body_size` : nginx plafonnant les corps de requête à 1 Mio par défaut, tout secret compris entre 1 et 2 Mio était rejeté par un `413` avant d'atteindre PHP, alors que `config.php` en autorise 2 Mio.
 
 ### Sécurité
 
 - Le lien de suppression exige désormais une session authentifiée en plus du jeton : un lien qui fuite est inutilisable par un tiers non connecté.
+- L'exemple nginx pour la production place désormais `try_files $uri =404;` avant `fastcgi_pass`, pour qu'une URL de la forme `/inexistant/x.php` ne puisse pas faire exécuter un autre fichier.

@@ -1,0 +1,39 @@
+# StashBin — Apache + mod_php.
+# La version de PHP est un paramètre de build ; le code est monté au démarrage
+# (jamais copié dans l'image), ce qui permet d'éditer sans reconstruire.
+#
+#   podman build -f containers/Containerfile.apache \
+#       --build-arg PHP_TAG=8.5-apache -t stashbin:8.5-apache containers/
+#
+# En pratique, passez plutôt par containers/stashbin.sh.
+
+ARG PHP_TAG=8.4-apache
+FROM docker.io/library/php:${PHP_TAG}
+
+# Racine web sur public/ : le reste du dépôt (src/, bin/, config.php) n'est
+# jamais exposé.
+RUN sed -i 's#/var/www/html#/var/www/stashbin/public#g' \
+        /etc/apache2/sites-available/000-default.conf
+
+# AllowOverride None : Apache ne cherche aucun .htaccess. Sans cela, un montage
+# en lecture seule peut lui faire renvoyer « unable to read htaccess file,
+# denying access to be safe » — un 403 sur toutes les pages.
+RUN printf '%s\n' \
+        '<Directory /var/www/stashbin/public>' \
+        '    AllowOverride None' \
+        '    Require all granted' \
+        '    DirectoryIndex index.php' \
+        '</Directory>' \
+        > /etc/apache2/conf-available/stashbin.conf \
+    && a2enconf stashbin
+
+# La base vit hors du code, dans un volume écrivable par PHP.
+RUN mkdir -p /var/lib/stashbin && chown www-data:www-data /var/lib/stashbin
+ENV STASHBIN_DB=/var/lib/stashbin/stashbin.sqlite
+VOLUME /var/lib/stashbin
+
+COPY apache-entrypoint.sh /usr/local/bin/stashbin-entrypoint
+RUN chmod +x /usr/local/bin/stashbin-entrypoint
+
+EXPOSE 80
+CMD ["/usr/local/bin/stashbin-entrypoint"]
