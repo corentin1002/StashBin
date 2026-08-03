@@ -21,15 +21,15 @@ Le lanceur construit l'image, démarre une instance neuve, crée un compte de te
 
 ## Ce qui est couvert
 
-**175 tests** répartis en cinq suites.
+**179 tests** répartis en cinq suites.
 
 | Suite | Tests | Portée |
 |---|--:|---|
-| `unit.test.php` | 51 | Fonctions de `src/bootstrap.php` sans passer par HTTP : échappement, configuration et surcharges d'environnement, schéma de base, purge des expirés, jetons CSRF, négociation de la langue et dictionnaires |
-| `api.test.php` | 43 | Règles métier via HTTP : authentification, CSRF, validation du payload, durées de vie, destruction après lecture, liens de suppression, méthodes refusées, codes d'erreur et langue de la réponse |
-| `security.test.php` | 27 | Garanties annoncées par le README : rien hors de `public/`, en-têtes de durcissement, session et fixation, stockage haché, injections, et le fait que le choix de la langue n'ouvre rien |
+| `unit.test.php` | 53 | Fonctions de `src/bootstrap.php` sans passer par HTTP : échappement, configuration et surcharges d'environnement, schéma de base, purge des expirés, jetons CSRF, négociation de la langue et dictionnaires |
+| `api.test.php` | 44 | Règles métier via HTTP : authentification, CSRF, validation du payload, durées de vie, destruction après lecture, liens de suppression, méthodes refusées, codes d'erreur et langue de la réponse |
+| `security.test.php` | 28 | Garanties annoncées par le README : rien hors de `public/`, en-têtes de durcissement, session et fixation, stockage haché, injections, et le fait que le choix de la langue n'ouvre rien |
 | `noauth.test.php` | 19 | Instance ouverte (`auth` à false) : création sans compte, CSRF toujours exigée, suppression par le seul jeton, et tout ce qui ne bouge pas |
-| `browser.test.mjs` | 35 | Chromium réel : cryptographie de bout en bout, parcours d'interface complets, et interface servie dans la langue du navigateur |
+| `browser.test.mjs` | 36 | Chromium réel : cryptographie de bout en bout, parcours d'interface complets, et interface servie dans la langue du navigateur |
 
 Les tests PHP s'exécutent **dans le conteneur applicatif**, sous l'identité `www-data`. Ils peuvent donc confronter la réponse HTTP à ce qui est réellement écrit en base — c'est ainsi qu'on vérifie qu'un jeton de suppression est bien stocké haché, ou qu'un payload n'est jamais déchiffré côté serveur.
 
@@ -37,7 +37,9 @@ Les tests PHP s'exécutent **dans le conteneur applicatif**, sous l'identité `w
 
 Les tests navigateur pilotent Chromium sur l'application réelle. Ils couvrent la partie que rien d'autre n'exerce : `deriveKey`, `encryptText` et `decryptPayload` de `public/assets/stashbin.js`, appelées directement dans la page, puis les parcours complets — création, relecture, mot de passe, destruction après lecture, lien de suppression, et le parcours entier rejoué dans un navigateur anglophone.
 
-La langue du contexte Chromium est **fixée explicitement** (`locale: 'fr-FR'`) : l'interface suit désormais `Accept-Language`, et la langue par défaut du navigateur varie d'une image à l'autre. Les tests qui vérifient une traduction ouvrent leur propre contexte, sans session, sans quoi `login.php` redirigerait vers la page de création.
+La langue est **fixée explicitement des deux côtés** : le contexte Chromium par `locale: 'fr-FR'`, le client HTTP de `lib.php` par un en-tête `Accept-Language: fr` posé sur chaque requête. L'interface suit désormais la langue demandée, et le repli du serveur sert l'anglais — laisser la langue au hasard rendrait imprévisibles tous les libellés affirmés par les tests.
+
+Pour éprouver le repli lui-même, construisez un client muet : `new Http($base, language: null)` n'envoie aucun en-tête de langue. Les tests qui vérifient une traduction ouvrent en outre leur propre contexte Chromium, sans session, sans quoi `login.php` redirigerait vers la page de création.
 
 ## Deux points de conception
 

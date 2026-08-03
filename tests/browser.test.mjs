@@ -439,6 +439,19 @@ await test('un navigateur francophone reçoit toujours l\'interface en français
   await p.close();
 });
 
+await test('un navigateur qui demande une langue non traduite reçoit l\'anglais', async () => {
+  // Le repli doit être une langue réelle : servi vide, l'interface afficherait
+  // ses identifiants de clés.
+  const german = await browser.newContext({ ignoreHTTPSErrors: true, locale: 'de-DE' });
+  const p = await german.newPage();
+  await p.goto(`${BASE}/login.php`);
+  assertEq('en', await p.getAttribute('html', 'lang'), 'anglais servi faute d\'allemand');
+  assertTrue((await p.textContent('button[type="submit"]')).includes('Sign in'), 'bouton en anglais');
+  assertTrue(!(await p.content()).includes('login.submit'), 'aucune clé brute affichée');
+  await p.close();
+  await german.close();
+});
+
 await test('le paramètre « lang » l\'emporte sur la langue du navigateur', async () => {
   const p = await english.newPage();
   await p.goto(`${BASE}/login.php?lang=fr`);

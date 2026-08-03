@@ -217,7 +217,22 @@ test('un paramètre « lang » qui est un chemin ne charge aucun fichier', funct
         $res = $http->get('/index.php?lang=' . rawurlencode($lang));
         assert_eq(200, $res->status, "« $lang » ne fait pas échouer la page");
         assert_not_contains('STASHBIN_DB', $res->body, "« $lang » ne divulgue pas la configuration");
-        assert_contains('lang="fr"', $res->body, "« $lang » retombe sur la langue par défaut");
+        assert_contains('lang="fr"', $res->body, "« $lang » n'écrase pas la langue demandée");
+    }
+});
+
+test('une langue que l\'on ne sait pas servir donne l\'anglais, jamais un dictionnaire vide', function () use ($base) {
+    // Le repli doit être une vraie langue : servi vide, l'interface afficherait
+    // ses identifiants de clés à l'écran.
+    // login.php plutôt qu'index.php : le client n'a pas de session, et une
+    // redirection ne renverrait aucun corps à inspecter.
+    $muet = new Http($base, language: null);
+    foreach ([null, 'de, es', 'xx-yy'] as $header) {
+        $res = $muet->request('GET', '/login.php', null, $header === null ? [] : ['Accept-Language' => $header]);
+        assert_contains('lang="en"', $res->body, 'anglais servi faute de mieux');
+        assert_contains('Sign in', $res->body, 'libellés effectivement traduits');
+        assert_not_contains('login.submit', $res->body, 'aucune clé brute affichée');
+        assert_not_contains('login.intro', $res->body, 'aucune clé brute affichée');
     }
 });
 

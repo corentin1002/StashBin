@@ -155,7 +155,11 @@ final class Http
 {
     private string $jar;
 
-    public function __construct(private string $base)
+    // La langue est fixée explicitement, et non laissée au repli du serveur :
+    // les tests affirment des libellés français, et le repli, lui, sert
+    // l'anglais. Passer null n'envoie aucun en-tête — c'est ainsi qu'on éprouve
+    // le repli lui-même.
+    public function __construct(private string $base, private ?string $language = 'fr')
     {
         $this->jar = tempnam(sys_get_temp_dir(), 'stashbin-cookies-');
     }
@@ -202,6 +206,9 @@ final class Http
         ]);
         if ($body !== null) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, is_array($body) ? http_build_query($body) : $body);
+        }
+        if ($this->language !== null && !isset($headers['Accept-Language'])) {
+            $headers['Accept-Language'] = $this->language;
         }
         if ($headers !== []) {
             $flat = [];

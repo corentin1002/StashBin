@@ -196,14 +196,26 @@ function available_locales(): array
     return $locales;
 }
 
-// Langue de repli effective. Une valeur de configuration qui ne correspond à
-// aucun fichier donnerait un dictionnaire vide, et l'interface afficherait ses
-// identifiants de clés : mieux vaut servir le français, dont le fichier fait
-// référence et est le seul dont la présence soit garantie.
+// Langue dont toutes les clés existent, et à laquelle une traduction
+// incomplète emprunte ce qui lui manque. C'est aussi le seul fichier dont la
+// présence soit garantie : StashBin est écrit en français, ses chaînes y
+// naissent, et les autres langues les traduisent.
+//
+// À distinguer de fallback_locale(), qui est la langue *servie* quand rien ne
+// correspond. Les deux ont commencé confondues, et les séparer permet de servir
+// l'anglais par défaut sans perdre le repli clé à clé.
+function reference_locale(): string
+{
+    return 'fr';
+}
+
+// Langue servie quand la négociation ne trouve rien. Une valeur de
+// configuration qui ne correspond à aucun fichier retomberait sur un
+// dictionnaire vide : mieux vaut la langue de référence, toujours présente.
 function fallback_locale(): string
 {
     $configured = config()['default_locale'];
-    return in_array($configured, available_locales(), true) ? $configured : 'fr';
+    return in_array($configured, available_locales(), true) ? $configured : reference_locale();
 }
 
 // Décompose un en-tête Accept-Language en étiquettes triées par qualité
@@ -286,14 +298,17 @@ function load_lang(string $locale): array
     return is_file($file) ? require $file : [];
 }
 
-// Dictionnaire de la langue servie, complété par celui du repli : une clé
-// absente d'une traduction partielle s'affiche dans la langue par défaut plutôt
-// qu'en identifiant brut.
+// Dictionnaire de la langue servie, complété par celui du repli puis par celui
+// de référence : une clé absente d'une traduction partielle s'affiche dans une
+// autre langue plutôt qu'en identifiant brut. La couche de référence tient même
+// si default_locale désigne une traduction elle-même incomplète.
 function strings(): array
 {
     static $strings = null;
     if ($strings === null) {
-        $strings = load_lang(locale()) + load_lang(fallback_locale());
+        $strings = load_lang(locale())
+            + load_lang(fallback_locale())
+            + load_lang(reference_locale());
     }
     return $strings;
 }

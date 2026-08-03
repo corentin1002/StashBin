@@ -305,6 +305,20 @@ test('se replie quand rien ne correspond', function () {
     assert_eq('fr', negotiate_locale(null, null, ['en', 'fr'], 'fr'), 'aucun en-tête du tout');
 });
 
+test('une langue que l\'on ne sait pas servir donne l\'anglais', function () {
+    // C'est le réglage livré : default_locale vaut « en ».
+    assert_eq('en', fallback_locale(), 'repli configuré sur l\'anglais');
+    assert_eq('en', negotiate_locale('de, es, it', null, available_locales(), fallback_locale()), 'aucune ne correspond');
+    assert_eq('en', negotiate_locale(null, null, available_locales(), fallback_locale()), 'aucun en-tête du tout');
+});
+
+test('la langue de référence reste le français, quoi que serve le repli', function () {
+    // Les deux rôles sont distincts : « en » est servi faute de mieux, « fr »
+    // fournit les clés qu'une traduction partielle n'a pas.
+    assert_eq('fr', reference_locale(), 'fr reste la référence');
+    assert_true(fallback_locale() !== reference_locale(), 'les deux ne sont plus confondus');
+});
+
 test('le paramètre explicite l\'emporte sur l\'en-tête', function () {
     assert_eq('en', negotiate_locale('fr', 'en', ['en', 'fr'], 'fr'), 'choix du visiteur prioritaire');
 });
@@ -322,16 +336,18 @@ test('le français et l\'anglais sont offerts', function () {
     assert_true(in_array('en', available_locales(), true), 'en présent');
 });
 
-test('l\'anglais traduit toutes les clés du français', function () {
+test('chaque langue offerte traduit toutes les clés de la référence', function () {
     // fr.php fait référence : une clé qui lui manquerait n'aurait aucun repli.
-    $missing = array_diff(array_keys(load_lang('fr')), array_keys(load_lang('en')));
-    assert_eq([], array_values($missing), 'aucune clé non traduite : ' . implode(', ', $missing));
+    foreach (available_locales() as $locale) {
+        $missing = array_diff(array_keys(load_lang(reference_locale())), array_keys(load_lang($locale)));
+        assert_eq([], array_values($missing), "clés non traduites en « $locale » : " . implode(', ', $missing));
+    }
 });
 
 test('aucune traduction ne laisse de marqueur orphelin', function () {
     // Un {marqueur} présent d'un côté et absent de l'autre afficherait du
     // texte parasite, ou perdrait la donnée qu'il devait porter.
-    $fr = load_lang('fr');
+    $fr = load_lang(reference_locale());
     foreach (load_lang('en') as $key => $text) {
         preg_match_all('/\{(\w+)\}/', $fr[$key] ?? '', $expected);
         preg_match_all('/\{(\w+)\}/', $text, $actual);
@@ -356,11 +372,12 @@ test('un nom de langue qui est un chemin ne lit aucun fichier', function () {
 group('Langue — traduction');
 
 test('rend la chaîne de la clé demandée', function () {
-    assert_eq('introuvable', t('error.not_found'), 'clé traduite');
+    // Hors requête HTTP, aucune langue n'est demandée : c'est le repli qui sert.
+    assert_eq('not found', t('error.not_found'), 'clé traduite dans la langue de repli');
 });
 
 test('remplace les marqueurs par les valeurs fournies', function () {
-    assert_eq('Erreur : panne', t('js.error', ['error' => 'panne']), 'marqueur substitué');
+    assert_eq('Error: panne', t('js.error', ['error' => 'panne']), 'marqueur substitué');
 });
 
 test('rend la clé elle-même quand elle n\'existe pas', function () {
@@ -386,7 +403,7 @@ test('t_html neutralise le HTML venu de la traduction', function () {
 test('les chaînes publiées au JavaScript sont du JSON sans le préfixe « js. »', function () {
     $published = json_decode(client_strings(), true);
     assert_true(is_array($published), 'JSON valide');
-    assert_eq('Chiffrement…', $published['encrypting'] ?? null, 'clé dépouillée de son préfixe');
+    assert_eq('Encrypting…', $published['encrypting'] ?? null, 'clé dépouillée de son préfixe');
     assert_true(!isset($published['js.encrypting']), 'préfixe retiré');
     assert_true(!isset($published['error.not_found']), 'seules les clés « js. » sont publiées');
 });

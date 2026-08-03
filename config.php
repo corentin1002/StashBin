@@ -38,11 +38,15 @@ return [
     ],
     'default_expiration' => '1w',
 
-    // Langue servie quand le navigateur n'en demande aucune de disponible, et
-    // langue dont les traductions incomplètes empruntent les chaînes
-    // manquantes. Les langues offertes sont les fichiers de src/lang/ : en
-    // ajouter une, c'est y déposer un fichier, sans toucher au code.
-    'default_locale' => 'fr',
+    // Langue servie quand le navigateur n'en demande aucune de disponible —
+    // l'anglais, faute de mieux, étant plus largement lu que le français.
+    // Les langues offertes sont les fichiers de src/lang/ : en ajouter une,
+    // c'est y déposer un fichier, sans toucher au code.
+    //
+    // À ne pas confondre avec src/lang/fr.php, qui reste le fichier de
+    // référence : c'est de lui qu'une traduction incomplète emprunte ses
+    // chaînes manquantes, quelle que soit la valeur réglée ici.
+    'default_locale' => 'en',
 
     // Nom du cookie de session.
     'session_name' => 'stashbin',

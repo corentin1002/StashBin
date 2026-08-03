@@ -262,9 +262,17 @@ test('une erreur porte un code stable et un message traduit', function () use ($
     assert_eq('not found', $res->json()['error'], 'le message, lui, est traduit');
 });
 
-test('sans en-tête de langue, l\'API répond dans la langue par défaut', function () use ($http) {
-    $res = $http->get('/api.php?id=' . str_repeat('z', 16));
-    assert_eq('introuvable', $res->json()['error'], 'repli sur le français');
+test('sans en-tête de langue, l\'API répond dans la langue de repli', function () use ($base) {
+    // Client muet sur la langue : c'est default_locale qui tranche, et il vaut
+    // « en ».
+    $muet = new Http($base, language: null);
+    $res = $muet->get('/api.php?id=' . str_repeat('z', 16));
+    assert_eq('not found', $res->json()['error'], 'repli sur l\'anglais');
+});
+
+test('une langue que l\'on ne sait pas servir donne l\'anglais', function () use ($http) {
+    $res = $http->request('GET', '/api.php?id=' . str_repeat('z', 16), null, ['Accept-Language' => 'de, es;q=0.8']);
+    assert_eq('not found', $res->json()['error'], 'ni allemand ni espagnol : anglais');
 });
 
 test('la langue demandée n\'altère ni le statut ni le code', function () use ($http) {
