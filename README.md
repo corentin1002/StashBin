@@ -61,6 +61,24 @@ Le code est monté depuis le projet : toute modification est visible immédiatem
 
 `./containers/stashbin.sh test` rejoue le parcours complet — connexion, création, relecture, destruction après lecture — sur les huit combinaisons de version et de serveur. Voir [`containers/README.md`](containers/README.md).
 
+## 🧪 Tests
+
+```bash
+./tests/run.sh          # 114 tests, quelques minutes
+./tests/run.sh --help   # options : version, serveur, matrice complète…
+```
+
+Le lanceur démarre une instance neuve, joue les quatre suites et détruit tout : rien à préparer, rien à nettoyer. Le code de sortie vaut `0` si et seulement si tout passe.
+
+| Suite | Tests | Portée |
+|---|--:|---|
+| Unitaire | 24 | Fonctions de `src/bootstrap.php` : échappement, configuration, schéma, purge, CSRF |
+| API | 39 | Règles métier via HTTP : authentification, validation, durées de vie, destruction après lecture, suppression |
+| Sécurité | 21 | Rien hors de `public/`, en-têtes, fixation de session, stockage haché, injections |
+| Navigateur | 30 | Chromium réel : cryptographie de bout en bout et parcours d'interface |
+
+Les tests navigateur exercent la partie que rien d'autre ne couvre — `deriveKey`, `encryptText`, `decryptPayload` — et vérifient qu'un chiffré altéré d'un seul bit est rejeté. L'ensemble a été éprouvé par mutation : douze régressions introduites volontairement dans le code, douze détectées. Voir [`tests/README.md`](tests/README.md).
+
 ### Avec PHP seul
 
 Prérequis : PHP ≥ 8.1 avec `pdo_sqlite` (`php-cli` + `php-pdo` sur Fedora, `php-cli` + `php-sqlite3` sur Debian/Ubuntu). Aucune dépendance Composer.
@@ -180,6 +198,13 @@ public/             document root : pages, API, assets
 ├── api.php         API JSON (création, lecture, suppression)
 ├── login.php       connexion
 └── assets/         chiffrement WebCrypto + styles
+tests/              jeu de test complet (voir son README)
+├── run.sh          lanceur unique : construit, joue, nettoie
+├── unit.test.php   fonctions de src/bootstrap.php
+├── api.test.php    règles métier de l'API
+├── security.test.php  garanties de sécurité
+├── browser.test.mjs   cryptographie et parcours, dans Chromium
+└── lib.php         assertions et client HTTP, sans dépendance
 src/bootstrap.php   base de données, sessions, CSRF, helpers
 bin/user.php        gestion des comptes en CLI
 data/               base SQLite (créée automatiquement)
