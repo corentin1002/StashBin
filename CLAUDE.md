@@ -67,6 +67,7 @@ Chacun a coûté du temps une fois ; ils sont documentés pour ne pas le refaire
 - **Une exception non rattrapée sortait en trace d'appel sous un statut `200`.** Un plantage passait donc pour un succès, ce qui a masqué la course ci-dessus pendant tout un test. `set_exception_handler()` dans `bootstrap.php` renvoie un `500` et le code stable `internal_error` ; ne le retirez pas au prétexte que `display_errors` est déjà à `Off` en production.
 - **`json_extract()` lève une erreur sur une chaîne vide, pas un `NULL`.** Le payload d'une pierre tombale est effacé (`''`), donc toute lecture JSON de `payload` doit passer par `CASE WHEN json_valid(payload) THEN …`. Sans ce garde-fou, l'inventaire tombe en erreur fatale dès qu'une entrée est terminée — et une base neuve n'en a aucune, donc ça se voit tard.
 - **L'expiration choisie se saisit en deux champs, `date` et `time`.** Un `datetime-local` unique donne un calendrier à Firefox et rien pour l'heure, qu'il faut taper. Les deux champs partent d'aujourd'hui à la minute suivante, et `syncExpiry()` les rafraîchit dès que l'instant qu'ils portent est passé : c'est ce qui évite qu'un formulaire laissé ouvert propose un moment révolu.
+- **L'opcache du conteneur revalide toutes les 2 secondes.** Une mutation suivie immédiatement de son test rejoue l'ancien code : l'effet apparaît au tour suivant, et une mutation bien détectée passe pour ignorée — pendant que la précédente fait échouer un test sans rapport. Laissez passer quelques secondes entre l'écriture et l'exécution.
 - **Ne restaurez jamais un fichier par `git checkout` pendant une mutation de test** tant que le travail n'est pas commité : les fichiers nouveaux ne sont pas connus de git, et les fichiers modifiés reviennent à `HEAD`, pas à l'état d'avant la mutation. Commitez d'abord, mutez ensuite.
 
 ## Organisation
@@ -105,7 +106,7 @@ Les suites PHP tournent **dans le conteneur applicatif** : elles peuvent donc co
 
 Le libellé d'un test se lit comme une phrase et décrit le comportement attendu, pas la mécanique : « un visiteur anonyme ne peut pas créer de secret (401) », pas « test création 401 ».
 
-Après avoir ajouté une fonctionnalité, cassez-la volontairement et vérifiez qu'au moins un test s'en aperçoit. Le jeu de test actuel a été validé ainsi : vingt-quatre régressions introduites, vingt-quatre détectées.
+Après avoir ajouté une fonctionnalité, cassez-la volontairement et vérifiez qu'au moins un test s'en aperçoit. Le jeu de test actuel a été validé ainsi : vingt-huit régressions introduites, vingt-huit détectées.
 
 ## Git
 

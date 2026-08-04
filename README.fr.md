@@ -83,7 +83,7 @@ Le lanceur démarre une instance neuve, joue les cinq suites et détruit tout : 
 | Instance ouverte | 19 | Second conteneur sans authentification : création libre, CSRF toujours exigée, garanties inchangées |
 | Navigateur | 36 | Chromium réel : cryptographie de bout en bout, parcours d'interface, langue servie |
 
-Les tests navigateur exercent la partie que rien d'autre ne couvre — `deriveKey`, `encryptText`, `decryptPayload` — et vérifient qu'un chiffré altéré d'un seul bit est rejeté. L'ensemble a été éprouvé par mutation : vingt-quatre régressions introduites volontairement dans le code, vingt-quatre détectées. Voir [`tests/README.md`](tests/README.md).
+Les tests navigateur exercent la partie que rien d'autre ne couvre — `deriveKey`, `encryptText`, `decryptPayload` — et vérifient qu'un chiffré altéré d'un seul bit est rejeté. L'ensemble a été éprouvé par mutation : vingt-huit régressions introduites volontairement dans le code, vingt-huit détectées. Voir [`tests/README.md`](tests/README.md).
 
 ### Avec PHP seul
 
