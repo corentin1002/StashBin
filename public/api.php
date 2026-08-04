@@ -103,17 +103,10 @@ if ($method === 'POST') {
         }
     }
 
-    // The title is stored as it comes: it is the only part of a secret the
-    // server can read, and the only one it is meant to. Without an account
-    // there is no list to show it in, so it is not kept at all.
+    // Recorded so that the creator's list can exist at all. It is the only
+    // thing the server learns about a secret beyond its lifetime: nothing
+    // describes the content, not even a label.
     $user = current_user();
-    $title = trim((string) ($body['title'] ?? ''));
-    if (mb_strlen($title) > config()['title_max']) {
-        json_error(400, 'title_too_long');
-    }
-    if ($user === null || $title === '') {
-        $title = null;
-    }
 
     $expirations = config()['expirations'];
     $expireKey = $body['expire'] ?? config()['default_expiration'];
@@ -128,8 +121,8 @@ if ($method === 'POST') {
     $deleteToken = rtrim(strtr(base64_encode(random_bytes(18)), '+/', '-_'), '=');
 
     $stmt = db()->prepare(
-        'INSERT INTO pastes (id, payload, burn, delete_hash, created, expires, owner_id, title)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO pastes (id, payload, burn, delete_hash, created, expires, owner_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)'
     );
     $stmt->execute([
         $id,
@@ -139,7 +132,6 @@ if ($method === 'POST') {
         time(),
         $expires,
         $user['id'] ?? null,
-        $title,
     ]);
 
     json_out(201, ['id' => $id, 'delete_token' => $deleteToken]);

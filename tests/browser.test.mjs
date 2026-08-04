@@ -71,10 +71,9 @@ async function login(page) {
 }
 
 /** Fills the creation form and returns the two links produced. */
-async function createSecret(page, { text, password = '', expire = '1h', burn = false, title = '' }) {
+async function createSecret(page, { text, password = '', expire = '1h', burn = false }) {
   await page.goto(`${BASE}/index.php`);
   await page.fill('#secret', text);
-  if (title) await page.fill('#title', title);
   if (password) await page.fill('#password', password);
   await page.selectOption('#expire', expire);
   if (burn) await page.check('#burn');
@@ -419,40 +418,36 @@ await test('the creator can delete their secret through the link provided', asyn
 // ---------------------------------------------------------------------------
 group("The creator's inventory");
 
-await test('a secret created with a title appears in the list, never read', async () => {
-  const title = 'Accès au NAS — étage 2';
-  await page.goto(`${BASE}/index.php`);
-  await page.fill('#secret', 'contenu du NAS');
-  await page.fill('#title', title);
-  await page.click('#submit-btn');
-  await page.waitForSelector('#result:not(.hidden)', { timeout: 20000 });
+/** The identifier a sharing link carries, which is what names an entry. */
+function idOf(link) {
+  return new URL(link).searchParams.get('id');
+}
+
+await test('a secret just created heads the list, never read', async () => {
+  const { share } = await createSecret(page, { text: 'à inventorier' });
+  const id = idOf(share);
 
   await page.goto(`${BASE}/secrets.php`);
-  const entry = page.locator('article.secret').filter({ hasText: title }).first();
-  assertEq(title, (await entry.locator('h2').textContent()).trim(), 'title shown as typed');
-  assertTrue((await entry.locator('.badge.state').textContent()).includes('Jamais consulté'), 'never read yet');
-  // Newest first: the entry just created heads the list, whatever else was
-  // created in the same second.
-  assertEq(title, (await page.locator('article.secret h2').first().textContent()).trim(), 'newest first');
+  const first = page.locator('article.secret').first();
+  assertEq(id, (await first.locator('h2').textContent()).trim(), 'newest first, named by its identifier');
+  assertTrue((await first.locator('.badge.state').textContent()).includes('Jamais consulté'), 'never read yet');
 });
 
 await test('reading the secret turns the entry into "read once"', async () => {
-  const title = 'Lu une fois';
-  const { share } = await createSecret(page, { text: 'à lire', title });
+  const { share } = await createSecret(page, { text: 'à lire' });
   await readSecret(context, share);
 
   await page.goto(`${BASE}/secrets.php`);
-  const entry = page.locator('article.secret').filter({ hasText: title }).first();
+  const entry = page.locator('article.secret').filter({ hasText: idOf(share) }).first();
   assertTrue((await entry.locator('.badge.state').textContent()).includes('Consulté une fois'), 'one read counted');
 });
 
 await test('the access log names the browser that came for the secret', async () => {
-  const title = 'Journal des accès';
-  const { share } = await createSecret(page, { text: 'à tracer', title });
+  const { share } = await createSecret(page, { text: 'à tracer' });
   await readSecret(context, share);
 
   await page.goto(`${BASE}/secrets.php`);
-  const entry = page.locator('article.secret').filter({ hasText: title }).first();
+  const entry = page.locator('article.secret').filter({ hasText: idOf(share) }).first();
   await entry.locator('summary').click();
   const log = await entry.locator('table').textContent();
   assertTrue(log.includes('Secret remis'), 'the access is listed');
@@ -460,15 +455,14 @@ await test('the access log names the browser that came for the secret', async ()
 });
 
 await test('deleting from the list makes the link stop working', async () => {
-  const title = 'Supprimé depuis la liste';
-  const { share } = await createSecret(page, { text: 'à supprimer', title });
+  const { share } = await createSecret(page, { text: 'à supprimer' });
+  const id = idOf(share);
 
   await page.goto(`${BASE}/secrets.php`);
-  const entry = page.locator('article.secret').filter({ hasText: title }).first();
-  await entry.locator('button').click();
+  await page.locator('article.secret').filter({ hasText: id }).first().locator('button').click();
   await page.waitForURL('**/secrets.php?done=deleted');
 
-  const after = page.locator('article.secret').filter({ hasText: title }).first();
+  const after = page.locator('article.secret').filter({ hasText: id }).first();
   assertTrue((await after.locator('.badge.state').textContent()).includes('Supprimé'), 'entry reads as deleted');
 
   const reader = await context.newPage();
@@ -483,8 +477,7 @@ await test('deleting from the list makes the link stop working', async () => {
 });
 
 await test('a burned secret is reported as destroyed, and the replay is logged', async () => {
-  const title = 'Détruit à la lecture';
-  const { share } = await createSecret(page, { text: 'usage unique', title, burn: true });
+  const { share } = await createSecret(page, { text: 'usage unique', burn: true });
   await readSecret(context, share, { confirmBurn: true });
 
   // Coming back to a spent link is exactly what a chat application's link
@@ -499,7 +492,7 @@ await test('a burned secret is reported as destroyed, and the replay is logged',
   await late.close();
 
   await page.goto(`${BASE}/secrets.php`);
-  const entry = page.locator('article.secret').filter({ hasText: title }).first();
+  const entry = page.locator('article.secret').filter({ hasText: idOf(share) }).first();
   assertTrue((await entry.locator('.badge.state').textContent()).includes('Détruit après lecture'), 'reported as burned');
   await entry.locator('summary').click();
   const log = await entry.locator('table').textContent();
@@ -507,14 +500,14 @@ await test('a burned secret is reported as destroyed, and the replay is logged',
 });
 
 await test('an entry can be removed from the history once the secret is gone', async () => {
-  const title = 'Retiré de l’historique';
-  const { share } = await createSecret(page, { text: 'éphémère', title, burn: true });
+  const { share } = await createSecret(page, { text: 'éphémère', burn: true });
+  const id = idOf(share);
   await readSecret(context, share, { confirmBurn: true });
 
   await page.goto(`${BASE}/secrets.php`);
-  await page.locator('article.secret').filter({ hasText: title }).first().locator('button').click();
+  await page.locator('article.secret').filter({ hasText: id }).first().locator('button').click();
   await page.waitForURL('**/secrets.php?done=forgotten');
-  assertEq(0, await page.locator('article.secret').filter({ hasText: title }).count(), 'entry gone from the list');
+  assertEq(0, await page.locator('article.secret').filter({ hasText: id }).count(), 'entry gone from the list');
 });
 
 // ---------------------------------------------------------------------------

@@ -42,14 +42,6 @@ $expirations = config()['expirations'];
       <textarea id="secret" rows="10" required placeholder="<?= e(t('create.secret_placeholder')) ?>"></textarea>
     </label>
 
-    <?php if ($user !== null): ?>
-    <label><?= e(t('create.title_label')) ?>
-      <input type="text" id="title" maxlength="<?= (int) config()['title_max'] ?>"
-             placeholder="<?= e(t('create.title_placeholder')) ?>">
-    </label>
-    <p class="muted"><?= e(t('create.title_notice')) ?></p>
-    <?php endif; ?>
-
     <div class="options">
       <label><?= e(t('create.expire_label')) ?>
         <select id="expire">

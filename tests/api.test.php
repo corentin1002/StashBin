@@ -246,46 +246,13 @@ test('an anonymous visitor holding the right token is sent to the sign-in page',
 });
 
 // ---------------------------------------------------------------------------
-group('Title, ownership and access log');
+group('Ownership and access log');
 
 test('a secret belongs to whoever created it', function () use ($http, $token, $user) {
     $id = $http->createSecret([], $token)->json()['id'];
     $owner = db()->query('SELECT username FROM users u JOIN pastes p ON p.owner_id = u.id
                           WHERE p.id = ' . db()->quote($id))->fetchColumn();
     assert_eq($user, $owner, 'creator recorded');
-});
-
-test('the title is stored in the clear, as sent', function () use ($http, $token) {
-    // It is the one part of a secret the server can read, and deliberately so:
-    // without it, a list of identifiers would be useless to its owner.
-    $id = $http->createSecret(['title' => 'Accès Postgres — prod'], $token)->json()['id'];
-    $stored = db()->query('SELECT title FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
-    assert_eq('Accès Postgres — prod', $stored, 'title stored verbatim');
-});
-
-test('a secret with no title stores nothing rather than an empty string', function () use ($http, $token) {
-    $id = $http->createSecret([], $token)->json()['id'];
-    $stored = db()->query('SELECT title FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
-    assert_eq(null, $stored, 'no title, no value');
-});
-
-test('an oversized title is refused (400) and nothing is created', function () use ($http, $token) {
-    $before = (int) db()->query('SELECT COUNT(*) FROM pastes')->fetchColumn();
-    $res = $http->createSecret(['title' => str_repeat('é', config()['title_max'] + 1)], $token);
-    assert_eq(400, $res->status, 'title over the limit rejected');
-    assert_eq('title_too_long', $res->json()['code'], 'stable code');
-    $after = (int) db()->query('SELECT COUNT(*) FROM pastes')->fetchColumn();
-    assert_eq($before, $after, 'refusal creates nothing');
-});
-
-test('a title of exactly the maximum length is accepted', function () use ($http, $token) {
-    // The limit counts characters, not bytes: an accented title of the right
-    // length must not be refused for weighing more.
-    $title = str_repeat('é', config()['title_max']);
-    $res = $http->createSecret(['title' => $title], $token);
-    assert_eq(201, $res->status, 'the bound itself is allowed');
-    $stored = db()->query('SELECT title FROM pastes WHERE id = ' . db()->quote($res->json()['id']))->fetchColumn();
-    assert_eq($title, $stored, 'stored whole');
 });
 
 test('reading a secret records the date, the address and the browser', function () use ($http, $token) {

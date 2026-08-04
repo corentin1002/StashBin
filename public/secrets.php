@@ -107,7 +107,11 @@ $csrf = csrf_token();
     $accesses = $logs->fetchAll();
   ?>
   <article class="secret<?= $secret['gone'] !== null ? ' gone' : '' ?>">
-    <h2><?= e($secret['title'] ?? t('secrets.untitled')) ?></h2>
+    <!-- The identifier is all there is to name an entry by: nothing describes
+         the content, not even a label the server could read. It is also what
+         appears in the link handed out, so it is what a creator can match
+         against what they sent. -->
+    <h2 class="ident"><?= e($secret['id']) ?></h2>
 
     <p class="badges">
       <span class="badge state"><?= e($state) ?></span>
@@ -126,7 +130,6 @@ $csrf = csrf_token();
       <?php if ($secret['gone'] !== null): ?>
       <li><?= e(t('secrets.gone_on', ['date' => utc_stamp((int) $secret['gone'])])) ?></li>
       <?php endif; ?>
-      <li><?= e(t('secrets.identifier')) ?> <code><?= e($secret['id']) ?></code></li>
     </ul>
 
     <details>

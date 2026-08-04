@@ -81,7 +81,6 @@ function migrate_schema(PDO $pdo): void
         created INTEGER NOT NULL,
         expires INTEGER,
         owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        title TEXT,
         gone INTEGER,
         gone_cause TEXT
     )');
@@ -103,7 +102,6 @@ function migrate_schema(PDO $pdo): void
     $existing = array_column($pdo->query('PRAGMA table_info(pastes)')->fetchAll(), 'name');
     $added = [
         'owner_id'   => 'INTEGER REFERENCES users(id) ON DELETE SET NULL',
-        'title'      => 'TEXT',
         'gone'       => 'INTEGER',
         'gone_cause' => 'TEXT',
     ];

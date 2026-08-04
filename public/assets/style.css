@@ -149,7 +149,14 @@ pre {
    rather than as one more live entry. */
 .secret.gone { background: var(--bg); }
 
-.secret h2 { margin: 0; font-size: 1.05rem; overflow-wrap: anywhere; }
+/* The identifier names the entry: it is what appears in the link handed out,
+   and the only handle a creator has on a secret the server cannot describe. */
+.secret h2 {
+  margin: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
 .secret form { margin: 0; }
 .secret button { margin-top: 0.9rem; }
 

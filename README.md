@@ -19,7 +19,7 @@ Inspired by [PrivateBin](https://github.com/PrivateBin/PrivateBin), with one key
 - **Deletion link** — handed to the creator, usable only by a signed-in user.
 - **Multilingual interface** — English and French, chosen from the browser's language; adding a language means dropping a file into `src/lang/`.
 - **Usable on a phone** — one stylesheet, no framework: the layout reflows down to a 360px screen, fields stay at 16px so Safari iOS does not zoom in on focus, and tap targets reach 44px.
-- **An inventory for each creator** — what you created, under the optional title you gave it, with its state (never read, read *n* times, destroyed after reading, deleted, expired), the log of accesses it received, and a delete button while it still lives. Secrets are never readable from that page: their key never left the browser that made them.
+- **An inventory for each creator** — every secret you made, named by the identifier its link carries, with its state (never read, read *n* times, destroyed after reading, deleted, expired), the log of accesses it received, and a delete button while it still lives. Secrets are never readable from that page: their key never left the browser that made them.
 
 ## 🔍 How it works
 
@@ -69,7 +69,7 @@ The code is mounted from the project: any change shows up immediately, with no r
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 228 tests, a few minutes
+./tests/run.sh          # 220 tests, a few minutes
 ./tests/run.sh --help   # options: version, server, full matrix…
 ```
 
@@ -279,7 +279,7 @@ data/               SQLite database (created automatically)
 - Creating a secret requires an account; reading one only requires the link (plus the password, if any).
 - Deleting requires being signed in **and** either holding the token handed to the creator, or being the owner of the secret. Neither credential grants the other: a leaked deletion link is unusable by a stranger, and a signed-in stranger cannot delete what is not theirs.
 - Those last two rules — and only those — fall away if the operator sets `'auth' => false`: an explicit choice, never the shipped default.
-- **What the server does know**, and it is worth knowing: which account created which secret, the title given to it — that one field is stored in the clear, which is why the form says so — and, for every access, the date, the reader's IP address as the web server saw it and the browser it declared. That log exists to answer "did they read it?", and it is kept as long as the entry stays in its creator's list. An instance without authentication records none of it: no owner, no title, no log.
+- **What the server does know**, and it is worth knowing: which account created which secret, and for every access the date, the reader's IP address as the web server saw it and the browser it declared. Nothing describes the content — not even a label — and the log exists to answer "did they read it?". It is kept as long as the entry stays in its creator's list. An instance without authentication records none of it: no owner, no log.
 - `HttpOnly`/`SameSite` sessions, CSRF tokens, a strict CSP, hashed passwords (`password_hash`).
 - What a compromised server can do: delete secrets, serve malicious JavaScript to future visitors. This is the same limit as PrivateBin — server integrity still matters.
 

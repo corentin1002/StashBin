@@ -162,7 +162,7 @@ test('creates the expected schema', function () {
 
 test('the pastes table carries the expected columns', function () {
     $cols = array_column(db()->query('PRAGMA table_info(pastes)')->fetchAll(), 'name');
-    $expected = ['id', 'payload', 'burn', 'delete_hash', 'created', 'expires', 'owner_id', 'title', 'gone', 'gone_cause'];
+    $expected = ['id', 'payload', 'burn', 'delete_hash', 'created', 'expires', 'owner_id', 'gone', 'gone_cause'];
     foreach ($expected as $col) {
         assert_true(in_array($col, $cols, true), "\"$col\" column");
     }
@@ -287,7 +287,7 @@ test('adds the missing columns to an older database', function () use ($legacy) 
     $pdo = $legacy();
     migrate_schema($pdo);
     $cols = array_column($pdo->query('PRAGMA table_info(pastes)')->fetchAll(), 'name');
-    foreach (['owner_id', 'title', 'gone', 'gone_cause'] as $col) {
+    foreach (['owner_id', 'gone', 'gone_cause'] as $col) {
         assert_true(in_array($col, $cols, true), "\"$col\" added");
     }
 });

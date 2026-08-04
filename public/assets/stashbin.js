@@ -139,9 +139,6 @@ if (createForm) {
           payload,
           expire: document.getElementById('expire').value,
           burn: document.getElementById('burn').checked,
-          // The one field that leaves in the clear, and only when signed in:
-          // without an account there is no list for it to label.
-          title: document.getElementById('title')?.value ?? '',
         }),
       });
       const data = await res.json();

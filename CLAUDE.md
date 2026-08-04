@@ -10,7 +10,7 @@ Ce sont les promesses du produit. Une modification qui en casse une est un bug, 
 - **La clé de déchiffrement vit dans le fragment `#` de l'URL**, qui n'est pas transmis au serveur. Ne la déplacez pas dans la partie interrogeable, ni dans un cookie, ni dans un en-tête.
 - **Créer exige un compte ; lire n'exige que le lien.** Supprimer exige une session ouverte **et**, soit le jeton remis au créateur, soit d'être le propriétaire du secret. Les deux titres sont distincts : l'un ne vaut jamais l'autre, et un inconnu connecté ne supprime rien qui ne soit à lui. Unique dérogation, et elle est explicite : `'auth' => false` dans `config.php` (ou `STASHBIN_AUTH=0`) ouvre création et suppression à tout visiteur. Le défaut livré est `true` et doit le rester ; tous les autres invariants tiennent quelle que soit la valeur.
 - **Le jeton de suppression est stocké haché** (SHA-256), jamais en clair.
-- **Le titre d'un secret est la seule chose que le serveur peut lire.** Il est facultatif, stocké en clair, jamais servi au lecteur, et le formulaire prévient. Tout le reste du secret lui demeure opaque. N'ajoutez pas d'autre métadonnée en clair sans que ce soit un choix assumé et écrit.
+- **Rien ne décrit le contenu d'un secret, pas même une étiquette.** L'inventaire ne connaît que l'identifiant, les dates et les accès. Un titre en clair a été écrit puis retiré : il rendait la liste plus lisible au prix de la seule métadonnée parlante que le serveur aurait pu lire. N'en réintroduisez pas sans que ce soit un choix assumé et écrit.
 - **L'inventaire est cloisonné par compte.** La propriété se vérifie dans la requête SQL, pas avant : un identifiant qui n'est pas à vous ne correspond simplement à rien.
 - **Le document root est `public/`.** Le reste du dépôt ne doit jamais être servi.
 - **HTTPS est une condition de fonctionnement, pas un durcissement.** `crypto.subtle` n'existe que dans un contexte sécurisé (HTTPS ou origine loopback) : servi en HTTP simple sur un nom d'hôte ordinaire, StashBin ne peut rien chiffrer du tout.
@@ -18,7 +18,7 @@ Ce sont les promesses du produit. Une modification qui en casse une est un bug, 
 ## Commandes
 
 ```bash
-./tests/run.sh                    # 228 tests, quelques minutes — à lancer avant de valider
+./tests/run.sh                    # 220 tests, quelques minutes — à lancer avant de valider
 ./tests/run.sh --no-browser       # sans Chromium, plus rapide pendant l'itération
 ./tests/run.sh --matrix           # suites PHP sur les huit combinaisons version × serveur
 

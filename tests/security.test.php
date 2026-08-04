@@ -198,15 +198,12 @@ test('the inventory demands a session', function () use ($base) {
 });
 
 test('a signed-in user sees their own secrets and nobody else\'s', function () use ($http, $token, $intruder) {
-    $mine = $http->createSecret(['title' => 'Titre du propriétaire'], $token)->json()['id'];
+    // The identifier is all an entry carries, so it is what the partitioning
+    // has to keep out of a stranger's page.
+    $mine = $http->createSecret([], $token)->json()['id'];
 
-    $ownerPage = $http->get('/secrets.php')->body;
-    assert_contains($mine, $ownerPage, 'the owner finds their secret');
-    assert_contains('Titre du propri', $ownerPage, 'and its title');
-
-    $intruderPage = $intruder->get('/secrets.php')->body;
-    assert_not_contains($mine, $intruderPage, 'somebody else sees neither the identifier');
-    assert_not_contains('Titre du propri', $intruderPage, 'nor the title');
+    assert_contains($mine, $http->get('/secrets.php')->body, 'the owner finds their secret');
+    assert_not_contains($mine, $intruder->get('/secrets.php')->body, 'somebody else does not');
 });
 
 test('a signed-in user cannot delete a secret that is not theirs', function () use ($http, $token, $intruder) {
@@ -242,27 +239,6 @@ test('the inventory refuses a write without a CSRF token', function () use ($htt
     $http->post('/secrets.php', ['id' => $id, 'action' => 'delete']);
     $gone = db()->query('SELECT gone FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
     assert_eq(null, $gone, 'nothing deleted without the token');
-});
-
-test('the reader is never told the title', function () use ($http, $token, $base) {
-    // The title is in the clear for its owner's list, and for nothing else: the
-    // API of a reader who holds the link must not mention it.
-    $id = $http->createSecret(['title' => 'ETIQUETTEQUINEDOITPASFUIR'], $token)->json()['id'];
-    $anon = new Http($base);
-    $res = $anon->get('/api.php?id=' . $id);
-    assert_eq(200, $res->status, 'secret readable');
-    assert_not_contains('ETIQUETTEQUINEDOITPASFUIR', $res->body, 'title absent from the response');
-    assert_true(!isset($res->json()['title']), 'no title field at all');
-});
-
-test('a title carrying a script is displayed escaped', function () use ($http, $token) {
-    // It is text the server stores in the clear and gives back on a page: the
-    // one place where a creator could attack their own browser, or another
-    // reader of the same page.
-    $http->createSecret(['title' => '<img src=x onerror=alert(1)>'], $token);
-    $page = $http->get('/secrets.php')->body;
-    assert_not_contains('<img src=x', $page, 'tag not interpreted');
-    assert_contains('&lt;img src=x', $page, 'displayed escaped');
 });
 
 test('the access log records the address the server saw, not the one claimed', function () use ($http, $token) {

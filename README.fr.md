@@ -19,7 +19,7 @@ Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une dif
 - **Lien de suppression** — remis au créateur, utilisable uniquement par un utilisateur connecté.
 - **Interface multilingue** — français et anglais, choisis d'après la langue du navigateur ; ajouter une langue, c'est déposer un fichier dans `src/lang/`.
 - **Utilisable sur téléphone** — une feuille de style, aucun framework : la mise en page se replie jusqu'à un écran de 360 px, les champs restent à 16 px pour que Safari iOS ne zoome pas à la mise au point, et les cibles tactiles atteignent 44 px.
-- **Un inventaire pour chaque créateur** — ce que vous avez créé, sous le titre facultatif que vous lui avez donné, avec son état (jamais consulté, consulté *n* fois, détruit après lecture, supprimé, expiré), le journal des accès reçus, et un bouton de suppression tant qu'il vit. Les secrets ne sont jamais consultables depuis cette page : leur clé n'a pas quitté le navigateur qui les a créés.
+- **Un inventaire pour chaque créateur** — chaque secret créé, désigné par l'identifiant que porte son lien, avec son état (jamais consulté, consulté *n* fois, détruit après lecture, supprimé, expiré), le journal des accès reçus, et un bouton de suppression tant qu'il vit. Les secrets ne sont jamais consultables depuis cette page : leur clé n'a pas quitté le navigateur qui les a créés.
 
 ## 🔍 Comment ça marche
 
@@ -69,7 +69,7 @@ Le code est monté depuis le projet : toute modification est visible immédiatem
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 228 tests, quelques minutes
+./tests/run.sh          # 220 tests, quelques minutes
 ./tests/run.sh --help   # options : version, serveur, matrice complète…
 ```
 
@@ -279,7 +279,7 @@ data/               base SQLite (créée automatiquement)
 - Créer un secret exige un compte ; lire n'exige que le lien (+ mot de passe éventuel).
 - Supprimer exige d'être connecté **et**, soit de posséder le jeton remis au créateur, soit d'être le propriétaire du secret. L'un ne vaut jamais l'autre : un lien de suppression qui fuit est inutilisable par un inconnu, et un inconnu connecté ne peut pas supprimer ce qui ne lui appartient pas.
 - Ces deux dernières règles tombent — et seulement elles — si l'exploitant met `'auth' => false` : c'est un choix explicite, jamais le défaut livré.
-- **Ce que le serveur sait**, et il vaut mieux le savoir : quel compte a créé quel secret, le titre qui lui a été donné — ce champ-là est stocké en clair, et le formulaire le dit — et, pour chaque accès, la date, l'adresse IP du lecteur telle que vue par le serveur web, et le navigateur qu'il déclare. Ce journal existe pour répondre à « est-ce qu'il l'a lu ? », et vit tant que l'entrée reste dans la liste de son créateur. Une instance sans authentification n'enregistre rien de tout ça : ni propriétaire, ni titre, ni journal.
+- **Ce que le serveur sait**, et il vaut mieux le savoir : quel compte a créé quel secret, et pour chaque accès la date, l'adresse IP du lecteur telle que vue par le serveur web, et le navigateur qu'il déclare. Rien ne décrit le contenu — pas même une étiquette — et ce journal existe pour répondre à « est-ce qu'il l'a lu ? ». Il vit tant que l'entrée reste dans la liste de son créateur. Une instance sans authentification n'enregistre rien de tout ça : ni propriétaire, ni journal.
 - Sessions `HttpOnly`/`SameSite`, jetons CSRF, CSP stricte, mots de passe hachés (`password_hash`).
 - Ce que le serveur peut faire s'il est compromis : supprimer des secrets, servir du JavaScript malveillant aux futurs visiteurs. C'est la même limite que PrivateBin — l'intégrité du serveur reste importante.
 
