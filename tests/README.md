@@ -21,15 +21,15 @@ The runner builds the image, starts a fresh instance, creates a test account, pl
 
 ## What is covered
 
-**240 tests** across five suites.
+**244 tests** across five suites.
 
 | Suite | Tests | Scope |
 |---|--:|---|
-| `unit.test.php` | 69 | Functions in `src/bootstrap.php` without going through HTTP: escaping, configuration and environment overrides, database schema and its migration, purging expired secrets, CSRF tokens, dates and the expiry instants a creator may choose, language negotiation and dictionaries |
+| `unit.test.php` | 71 | Functions in `src/bootstrap.php` without going through HTTP: escaping, configuration and environment overrides, database schema and its migration, purging expired secrets, CSRF tokens, dates in UTC and the markup that lets a browser localise them, the expiry instants a creator may choose, language negotiation and dictionaries |
 | `api.test.php` | 58 | Business rules over HTTP: authentication, CSRF, payload validation, lifetimes preset and chosen, burn after reading, deletion links, ownership, the access log and the headstones left behind, refused methods, error codes and the language of the response |
 | `security.test.php` | 37 | The guarantees the README makes: nothing outside `public/`, hardening headers, session and fixation, hashed storage, one creator's inventory kept out of another's reach, sweeps that spare live secrets, injection, and the fact that choosing a language opens nothing |
 | `noauth.test.php` | 22 | Open instance (`auth` set to false): creation without an account, CSRF still required, deletion by the token alone, no inventory, no owner and nothing recorded about readers, and everything that does not move |
-| `browser.test.mjs` | 54 | Real Chromium: end-to-end cryptography, complete interface journeys, the creator's inventory as they see it and the badges it carries, an expiry picked by hand, the interface served in the browser's language, and the layout on a phone-sized screen |
+| `browser.test.mjs` | 56 | Real Chromium: end-to-end cryptography, complete interface journeys, the creator's inventory as they see it, its badges and its dates in the reader's own timezone, an expiry picked by hand, the interface served in the browser's language, and the layout on a phone-sized screen |
 
 The PHP tests run **inside the application container**, under the `www-data` identity. They can therefore compare the HTTP response with what is actually written to the database — that is how we check that a deletion token really is stored hashed, or that a payload is never decrypted server-side.
 

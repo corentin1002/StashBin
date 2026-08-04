@@ -114,6 +114,8 @@ $csrf = csrf_token();
 <title><?= e(t('secrets.page_title')) ?></title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
+<!-- The script is here for one job: rewriting the dates below into the reader's
+     timezone. Everything it needs is in the page. -->
 <body>
 <main>
   <header>
@@ -174,14 +176,14 @@ $csrf = csrf_token();
     </p>
 
     <ul class="facts muted">
-      <li><?= e(t('secrets.created', ['date' => utc_stamp((int) $secret['created'])])) ?></li>
+      <li><?= t_html('secrets.created', ['{date}' => time_tag((int) $secret['created'])]) ?></li>
       <li>
         <?= $secret['expires'] === null
             ? e(t('secrets.expires_never'))
-            : e(t('secrets.expires', ['date' => utc_stamp((int) $secret['expires'])])) ?>
+            : t_html('secrets.expires', ['{date}' => time_tag((int) $secret['expires'])]) ?>
       </li>
       <?php if ($secret['gone'] !== null): ?>
-      <li><?= e(t('secrets.gone_on', ['date' => utc_stamp((int) $secret['gone'])])) ?></li>
+      <li><?= t_html('secrets.gone_on', ['{date}' => time_tag((int) $secret['gone'])]) ?></li>
       <?php endif; ?>
     </ul>
 
@@ -203,7 +205,7 @@ $csrf = csrf_token();
           <tbody>
             <?php foreach ($accesses as $access): ?>
             <tr>
-              <td class="stamp"><?= e(utc_stamp((int) $access['at'])) ?></td>
+              <td class="stamp"><?= time_tag((int) $access['at']) ?></td>
               <td><?= e(t('secrets.outcome_' . $access['outcome'])) ?></td>
               <td class="stamp"><?= e($access['ip'] ?? t('secrets.unknown')) ?></td>
               <td class="agent"><?= e($access['agent'] ?? t('secrets.unknown')) ?></td>
@@ -227,5 +229,6 @@ $csrf = csrf_token();
   </article>
   <?php endforeach; ?>
 </main>
+<script src="assets/stashbin.js"></script>
 </body>
 </html>

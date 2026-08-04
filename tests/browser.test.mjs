@@ -461,9 +461,11 @@ await test('a secret expires at the instant its creator picked', async () => {
 
   await page.goto(`${BASE}/secrets.php`);
   const id = new URL(share).searchParams.get('id');
-  const facts = await page.locator('article.secret').filter({ hasText: id }).first().locator('.facts').textContent();
-  const expected = when.toISOString().slice(0, 16).replace('T', ' ');
-  assertTrue(facts.includes(expected), `the list shows ${expected} UTC (got: ${facts.trim()})`);
+  // The instant travels in the element's datetime attribute; its text is
+  // whatever the reader's timezone makes of it.
+  const shown = await page.locator('article.secret').filter({ hasText: id }).first()
+    .locator('.facts time').nth(1).getAttribute('datetime');
+  assertEq(when.getTime(), new Date(shown).getTime(), 'the list holds the instant that was picked');
 });
 
 await test('a date already past never reaches the encryption', async () => {
@@ -630,6 +632,45 @@ await test('one button clears every finished entry at once', async () => {
   }
   assertEq(1, await page.locator('article.secret').filter({ hasText: live }).count(), 'the live secret stays');
   assertEq(0, await page.locator('form.sweep').count(), 'nothing left to sweep, no button');
+});
+
+await test('dates are shown in the reader\'s own timezone', async () => {
+  // Instants are stored in UTC because the server cannot know where anyone is;
+  // the browser can, so it is what puts them back into local time.
+  const tokyo = await browser.newContext({ ignoreHTTPSErrors: true, locale: 'fr-FR', timezoneId: 'Asia/Tokyo' });
+  const p = await tokyo.newPage();
+  await login(p);
+  const { share } = await createSecret(p, { text: 'lu depuis Tokyo' });
+
+  await p.goto(`${BASE}/secrets.php`);
+  const entry = p.locator('article.secret').filter({ hasText: idOf(share) }).first();
+  const first = entry.locator('.facts time').first();
+  const [iso, text] = [await first.getAttribute('datetime'), (await first.textContent()).trim()];
+
+  const expected = new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Tokyo' });
+  assertEq(expected, text, 'rendered in Tokyo time');
+  assertTrue(!text.includes('UTC'), 'and no longer announced as UTC');
+  await tokyo.close();
+});
+
+await test('without JavaScript the dates stay readable, and say they are UTC', async () => {
+  // The conversion is an improvement, not a dependency: the element's own text
+  // is the UTC rendering, and the page is worth reading without any script.
+  const plain = await browser.newContext({
+    ignoreHTTPSErrors: true, locale: 'fr-FR', timezoneId: 'Asia/Tokyo', javaScriptEnabled: false,
+  });
+  const p = await plain.newPage();
+  await p.goto(`${BASE}/login.php`);
+  await p.fill('input[name="username"]', USER);
+  await p.fill('input[name="password"]', PASS);
+  await Promise.all([p.waitForURL('**/index.php'), p.click('button[type="submit"]')]);
+  await p.goto(`${BASE}/secrets.php`);
+
+  const first = p.locator('article.secret .facts time').first();
+  const [iso, text] = [await first.getAttribute('datetime'), (await first.textContent()).trim()];
+  assertTrue(text.endsWith('UTC'), `UTC fallback shown (got: ${text})`);
+  assertEq(new Date(iso).toISOString().slice(0, 16).replace('T', ' ') + ' UTC', text, 'and it is the right instant');
+  await plain.close();
 });
 
 await test('an entry can be removed from the history once the secret is gone', async () => {

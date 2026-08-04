@@ -299,7 +299,23 @@ function e(string $s): string
 // rather than against wherever the machine happens to think it is.
 function utc_stamp(?int $stamp): string
 {
-    return $stamp === null ? t('secrets.unknown') : gmdate('Y-m-d H:i', $stamp);
+    return $stamp === null ? t('secrets.unknown') : gmdate('Y-m-d H:i', $stamp) . ' UTC';
+}
+
+// A date the browser rewrites into the reader's own timezone, which the server
+// has no way of knowing. The element carries the instant twice: once for the
+// script, once as text — so a page served without JavaScript still shows a date,
+// in UTC, and says which.
+//
+// Returns HTML, hence the escaping here rather than at the call site; the values
+// are numeric, but a helper that returns markup should never depend on that.
+function time_tag(?int $stamp): string
+{
+    if ($stamp === null) {
+        return e(t('secrets.unknown'));
+    }
+    return '<time datetime="' . e(gmdate('c', $stamp)) . '" data-stamp="' . $stamp . '">'
+        . e(utc_stamp($stamp)) . '</time>';
 }
 
 // ---------------------------------------------------------------------------

@@ -19,7 +19,7 @@ Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une dif
 - **Lien de suppression** — remis au créateur, utilisable uniquement par un utilisateur connecté.
 - **Interface multilingue** — français et anglais, choisis d'après la langue du navigateur ; ajouter une langue, c'est déposer un fichier dans `src/lang/`.
 - **Utilisable sur téléphone** — une feuille de style, aucun framework : la mise en page se replie jusqu'à un écran de 360 px, les champs restent à 16 px pour que Safari iOS ne zoome pas à la mise au point, et les cibles tactiles atteignent 44 px.
-- **Un inventaire pour chaque créateur** — chaque secret créé, désigné par l'identifiant que porte son lien, avec son état (jamais consulté, consulté *n* fois, détruit après lecture, supprimé, expiré), le journal des accès reçus, un bouton de suppression tant qu'il vit, et un bouton unique pour vider d'un coup toutes les entrées terminées. Les secrets ne sont jamais consultables depuis cette page : leur clé n'a pas quitté le navigateur qui les a créés.
+- **Un inventaire pour chaque créateur** — chaque secret créé, désigné par l'identifiant que porte son lien, avec son état (jamais consulté, consulté *n* fois, détruit après lecture, supprimé, expiré), le journal des accès reçus, un bouton de suppression tant qu'il vit, et un bouton unique pour vider d'un coup toutes les entrées terminées. Les dates s'affichent dans votre fuseau horaire. Les secrets ne sont jamais consultables depuis cette page : leur clé n'a pas quitté le navigateur qui les a créés.
 
 ## 🔍 Comment ça marche
 
@@ -69,7 +69,7 @@ Le code est monté depuis le projet : toute modification est visible immédiatem
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 240 tests, quelques minutes
+./tests/run.sh          # 244 tests, quelques minutes
 ./tests/run.sh --help   # options : version, serveur, matrice complète…
 ```
 

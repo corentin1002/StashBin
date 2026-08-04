@@ -19,7 +19,7 @@ Inspired by [PrivateBin](https://github.com/PrivateBin/PrivateBin), with one key
 - **Deletion link** — handed to the creator, usable only by a signed-in user.
 - **Multilingual interface** — English and French, chosen from the browser's language; adding a language means dropping a file into `src/lang/`.
 - **Usable on a phone** — one stylesheet, no framework: the layout reflows down to a 360px screen, fields stay at 16px so Safari iOS does not zoom in on focus, and tap targets reach 44px.
-- **An inventory for each creator** — every secret you made, named by the identifier its link carries, with its state (never read, read *n* times, destroyed after reading, deleted, expired), the log of accesses it received, a delete button while it still lives, and one button to clear every finished entry at once. Secrets are never readable from that page: their key never left the browser that made them.
+- **An inventory for each creator** — every secret you made, named by the identifier its link carries, with its state (never read, read *n* times, destroyed after reading, deleted, expired), the log of accesses it received, a delete button while it still lives, and one button to clear every finished entry at once. Dates are shown in your own timezone. Secrets are never readable from that page: their key never left the browser that made them.
 
 ## 🔍 How it works
 
@@ -69,7 +69,7 @@ The code is mounted from the project: any change shows up immediately, with no r
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 240 tests, a few minutes
+./tests/run.sh          # 244 tests, a few minutes
 ./tests/run.sh --help   # options: version, server, full matrix…
 ```
 

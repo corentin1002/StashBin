@@ -113,6 +113,22 @@ document.addEventListener('click', (ev) => {
   });
 });
 
+// --- Dates ------------------------------------------------------------------
+
+// Instants are stored and served in UTC, because the server has no way of
+// knowing where the reader is. The browser does, so it rewrites them here, in
+// the language the page is already being served in. Without this script the
+// dates stay readable — the element's own text is the UTC rendering, and says
+// so.
+for (const el of document.querySelectorAll('time[data-stamp]')) {
+  const at = new Date(Number(el.dataset.stamp) * 1000);
+  if (Number.isNaN(at.getTime())) continue;
+  el.textContent = at.toLocaleString(document.documentElement.lang || undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
 // --- Creation page ----------------------------------------------------------
 
 const createForm = document.getElementById('create-form');
