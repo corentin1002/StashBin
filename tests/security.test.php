@@ -262,6 +262,18 @@ test('clearing one history leaves everybody else\'s alone', function () use ($ht
     assert_eq(1, (int) $left, 'a stranger sweeping their own history clears none of mine');
 });
 
+test('the inventory never puts a ciphertext on the page', function () use ($http, $token) {
+    // The list needs dates, states and one flag; the payload it has no use for.
+    // Selecting it "just in case" would read hundreds of ciphertexts into
+    // memory and put them one HTML mistake away from being displayed.
+    $marker = 'Q0lQSEVSVEVYVEVOQ0xBSVI';
+    $http->createSecret(['payload' => ['v' => 1, 'iv' => 'AAAA', 'salt' => 'BBBB', 'iter' => 310000,
+                                       'pwd' => 1, 'ct' => $marker]], $token);
+    $page = $http->get('/secrets.php')->body;
+    assert_not_contains($marker, $page, 'no ciphertext reaches the page');
+    assert_contains('Mot de passe', $page, 'though the flag it carries is read');
+});
+
 test('the inventory refuses a write without a CSRF token', function () use ($http, $token) {
     // The session cookie is SameSite=Lax, so another site can drive a POST at
     // top level: the token is what stops it.

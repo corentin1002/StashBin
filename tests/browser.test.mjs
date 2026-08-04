@@ -530,6 +530,16 @@ await test('a secret just created heads the list, never read', async () => {
   assertTrue((await first.locator('.badge.state').textContent()).includes('Jamais consulté'), 'never read yet');
 });
 
+await test('a password-guarded secret says so in the list, like a single-use one', async () => {
+  const guarded = await createSecret(page, { text: 'sous mot de passe', password: 'phrase' });
+  const plain = await createSecret(page, { text: 'sans mot de passe' });
+
+  await page.goto(`${BASE}/secrets.php`);
+  const badges = (id) => page.locator('article.secret').filter({ hasText: id }).first().locator('.badges');
+  assertTrue((await badges(idOf(guarded.share)).textContent()).includes('Mot de passe'), 'badge shown');
+  assertTrue(!(await badges(idOf(plain.share)).textContent()).includes('Mot de passe'), 'and only where it applies');
+});
+
 await test('reading the secret turns the entry into "read once"', async () => {
   const { share } = await createSecret(page, { text: 'à lire' });
   await readSecret(context, share);
