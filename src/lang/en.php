@@ -95,6 +95,8 @@ return [
     'js.loading'              => 'Loading…',
     'js.decrypting'           => 'Decrypting…',
     'js.copied'               => 'Copied ✔',
+    'js.show_password'        => 'Show',
+    'js.hide_password'        => 'Hide',
     'js.create_failed'        => 'Creation failed: {error}',
     'js.bad_password'         => 'Incorrect password.',
     'js.bad_expiry'           => 'Choose a date and time in the future.',
