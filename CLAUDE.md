@@ -96,7 +96,7 @@ Les suites PHP tournent **dans le conteneur applicatif** : elles peuvent donc co
 
 Le libellé d'un test se lit comme une phrase et décrit le comportement attendu, pas la mécanique : « un visiteur anonyme ne peut pas créer de secret (401) », pas « test création 401 ».
 
-Après avoir ajouté une fonctionnalité, cassez-la volontairement et vérifiez qu'au moins un test s'en aperçoit. Le jeu de test actuel a été validé ainsi : vingt-deux régressions introduites, vingt-deux détectées.
+Après avoir ajouté une fonctionnalité, cassez-la volontairement et vérifiez qu'au moins un test s'en aperçoit. Le jeu de test actuel a été validé ainsi : vingt-quatre régressions introduites, vingt-quatre détectées.
 
 ## Git
 

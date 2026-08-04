@@ -83,7 +83,7 @@ The runner starts a fresh instance, plays the five suites and tears everything d
 | Open instance | 19 | A second container without authentication: free creation, CSRF still required, guarantees unchanged |
 | Browser | 36 | Real Chromium: end-to-end cryptography, interface journeys, language served |
 
-The browser tests exercise the part nothing else covers — `deriveKey`, `encryptText`, `decryptPayload` — and check that a ciphertext altered by a single bit is rejected. The whole set has been validated by mutation: twenty-two regressions deliberately introduced into the code, twenty-two caught. See [`tests/README.md`](tests/README.md).
+The browser tests exercise the part nothing else covers — `deriveKey`, `encryptText`, `decryptPayload` — and check that a ciphertext altered by a single bit is rejected. The whole set has been validated by mutation: twenty-four regressions deliberately introduced into the code, twenty-four caught. See [`tests/README.md`](tests/README.md).
 
 ### With PHP alone
 
