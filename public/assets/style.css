@@ -55,7 +55,7 @@ h2 { font-size: 1.15rem; }
 
 label { display: block; margin: 1rem 0 0.25rem; font-weight: 600; font-size: 0.9rem; }
 
-textarea, input[type="text"], input[type="password"], input[type="datetime-local"], select {
+textarea, input[type="text"], input[type="password"], input[type="date"], input[type="time"], select {
   width: 100%;
   margin-top: 0.35rem;
   padding: 0.6rem 0.7rem;

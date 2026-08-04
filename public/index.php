@@ -63,11 +63,19 @@ $expirations = config()['expirations'];
       </label>
     </div>
 
-    <!-- Revealed by the script when "custom" is picked. Hidden rather than
-         absent, so that the field needs no round trip to appear. -->
-    <label id="expire-at-field" class="hidden"><?= e(t('create.expire_at_label')) ?>
-      <input type="datetime-local" id="expire-at">
-    </label>
+    <!-- Revealed by the script when "custom" is picked; hidden rather than
+         absent, so that it needs no round trip to appear. Two native fields
+         rather than one datetime-local: browsers give a calendar to the first
+         and a clock to the second, where the combined control leaves the time
+         to be typed. -->
+    <div id="expire-at-field" class="options hidden">
+      <label><?= e(t('create.expire_date_label')) ?>
+        <input type="date" id="expire-date">
+      </label>
+      <label><?= e(t('create.expire_time_label')) ?>
+        <input type="time" id="expire-time">
+      </label>
+    </div>
 
     <button type="submit" id="submit-btn"><?= e(t('create.submit')) ?></button>
     <p class="error hidden" id="create-error"></p>
