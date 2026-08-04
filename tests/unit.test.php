@@ -362,13 +362,26 @@ test('refuses anything that is not a whole number of seconds', function () use (
 group('Dates — utc_stamp()');
 
 test('renders a date in UTC, whatever the server thinks its timezone is', function () {
-    // The access log times a reader's visit: it is shown in UTC and says so,
-    // rather than in whatever zone the machine happens to be set to.
+    // The server cannot know where the reader is, so what it writes is UTC and
+    // says so: the browser is what turns it into local time afterwards.
     $previous = date_default_timezone_get();
     date_default_timezone_set('Pacific/Kiritimati');
     $rendered = utc_stamp(1_700_000_000);
     date_default_timezone_set($previous);
-    assert_eq('2023-11-14 22:13', $rendered, 'UTC, minute precision');
+    assert_eq('2023-11-14 22:13 UTC', $rendered, 'UTC, minute precision, named');
+});
+
+test('time_tag() carries the instant for the script and a date for everyone else', function () {
+    // Two renderings of one instant: the attribute the browser rewrites from,
+    // and the text a reader sees when no script runs.
+    $html = time_tag(1_700_000_000);
+    assert_contains('datetime="2023-11-14T22:13:20+00:00"', $html, 'machine-readable instant');
+    assert_contains('data-stamp="1700000000"', $html, 'seconds for the script');
+    assert_contains('>2023-11-14 22:13 UTC<', $html, 'and a readable fallback');
+});
+
+test('time_tag() renders a missing date as a dash, not as an empty element', function () {
+    assert_eq(e(t('secrets.unknown')), time_tag(null), 'nothing to convert, nothing to mark up');
 });
 
 test('renders a missing date as a dash rather than as 1970', function () {
