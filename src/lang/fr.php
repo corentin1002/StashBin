@@ -62,6 +62,7 @@ return [
     'secrets.expires'         => 'Expire le {date} UTC',
     'secrets.expires_never'   => 'Sans expiration',
     'secrets.burn_badge'      => 'Usage unique',
+    'secrets.password_badge'  => 'Mot de passe',
     'secrets.state_unread'    => 'Jamais consulté',
     'secrets.state_read_one'  => 'Consulté une fois',
     'secrets.state_read_many' => 'Consulté {count} fois',

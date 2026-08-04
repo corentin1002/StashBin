@@ -77,11 +77,23 @@ purge_expired();
 // Only served reads count towards "read n times": a replayed link that found
 // nothing is an event of its own, and it belongs in the log, not in the tally.
 $stmt = db()->prepare(
-    'SELECT p.*, COUNT(r.id) AS reads
+    // Columns named one by one rather than "p.*": the payload is the one thing
+    // this page has no use for, and hundreds of ciphertexts would be read into
+    // memory to display a list of dates.
+    //
+    // Whether a password guards the secret is already in that payload, in the
+    // clear — the reader has to be told before being asked for one — so the
+    // flag is lifted out in SQL instead of becoming a column of its own. A
+    // secret at rest has no payload left, and no badge either — hence the
+    // json_valid guard: json_extract raises on the empty string a headstone
+    // carries, and would take the whole page down with it.
+    "SELECT p.id, p.burn, p.created, p.expires, p.gone, p.gone_cause,
+            CASE WHEN json_valid(p.payload) THEN json_extract(p.payload, '$.pwd') END AS pwd,
+            COUNT(r.id) AS reads
        FROM pastes p LEFT JOIN paste_reads r ON r.paste_id = p.id AND r.outcome = ?
       WHERE p.owner_id = ?
       GROUP BY p.id
-      ORDER BY p.created DESC, p.rowid DESC'
+      ORDER BY p.created DESC, p.rowid DESC"
 );
 $stmt->execute(['served', $user['id']]);
 $secrets = $stmt->fetchAll();
@@ -155,6 +167,9 @@ $csrf = csrf_token();
       <span class="badge state"><?= e($state) ?></span>
       <?php if ((int) $secret['burn'] === 1): ?>
       <span class="badge"><?= e(t('secrets.burn_badge')) ?></span>
+      <?php endif; ?>
+      <?php if ((int) $secret['pwd'] === 1): ?>
+      <span class="badge"><?= e(t('secrets.password_badge')) ?></span>
       <?php endif; ?>
     </p>
 
