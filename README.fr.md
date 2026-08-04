@@ -192,7 +192,7 @@ Tout se passe dans `config.php`, qui ne contient que des valeurs littérales : �
 | `db` | `data/stashbin.sqlite` | Chemin de la base SQLite |
 | `auth` | `true` | Authentification exigée pour créer et supprimer |
 | `max_size` | 2 Mio | Taille maximale du payload chiffré |
-| `expirations` / `default_expiration` | 1 h → jamais, `1w` | Durées de vie proposées |
+| `expirations` / `default_expiration` | 1 h → jamais, `1w` | Durées de vie proposées, à côté de la date et l'heure que le créateur peut choisir |
 | `default_locale` | `en` | Langue servie quand celle du navigateur n'est pas traduite |
 | `session_name` | `stashbin` | Nom du cookie de session |
 
