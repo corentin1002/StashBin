@@ -14,7 +14,7 @@ Inspired by [PrivateBin](https://github.com/PrivateBin/PrivateBin), with one key
 - **Authenticated creation** — accounts are managed from the CLI; without one, no secret can be created. Disabled by a single line (`'auth' => false`) for an open instance, when access is already restricted some other way.
 - **Read by link** — the decryption key travels in the URL's `#` fragment, which is never sent to the server.
 - **Optional password** — mixed into key derivation (PBKDF2-SHA256, 310,000 iterations); with it, the link alone is not enough.
-- **Expiry** — from 1 hour to never, with automatic purging.
+- **Expiry** — from 1 hour to never, or a date and time of your own choosing, with automatic purging.
 - **Burn after reading** — with a confirmation screen before the secret is consumed.
 - **Deletion link** — handed to the creator, usable only by a signed-in user.
 - **Multilingual interface** — English and French, chosen from the browser's language; adding a language means dropping a file into `src/lang/`.
@@ -69,7 +69,7 @@ The code is mounted from the project: any change shows up immediately, with no r
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 224 tests, a few minutes
+./tests/run.sh          # 238 tests, a few minutes
 ./tests/run.sh --help   # options: version, server, full matrix…
 ```
 
@@ -83,7 +83,7 @@ The runner starts a fresh instance, plays the five suites and tears everything d
 | Open instance | 19 | A second container without authentication: free creation, CSRF still required, guarantees unchanged |
 | Browser | 36 | Real Chromium: end-to-end cryptography, interface journeys, language served |
 
-The browser tests exercise the part nothing else covers — `deriveKey`, `encryptText`, `decryptPayload` — and check that a ciphertext altered by a single bit is rejected. The whole set has been validated by mutation: twenty-two regressions deliberately introduced into the code, twenty-two caught. See [`tests/README.md`](tests/README.md).
+The browser tests exercise the part nothing else covers — `deriveKey`, `encryptText`, `decryptPayload` — and check that a ciphertext altered by a single bit is rejected. The whole set has been validated by mutation: twenty-four regressions deliberately introduced into the code, twenty-four caught. See [`tests/README.md`](tests/README.md).
 
 ### With PHP alone
 
@@ -192,7 +192,7 @@ Everything happens in `config.php`, which holds nothing but literal values: writ
 | `db` | `data/stashbin.sqlite` | Path to the SQLite database |
 | `auth` | `true` | Authentication required to create and delete |
 | `max_size` | 2 MiB | Maximum size of the encrypted payload |
-| `expirations` / `default_expiration` | 1 h → never, `1w` | Lifetimes on offer |
+| `expirations` / `default_expiration` | 1 h → never, `1w` | Lifetimes on offer, beside the date and time a creator may pick |
 | `default_locale` | `en` | Language served when the browser's is not translated |
 | `session_name` | `stashbin` | Name of the session cookie |
 

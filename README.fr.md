@@ -14,7 +14,7 @@ Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une dif
 - **Création authentifiée** — comptes utilisateurs gérés en CLI ; sans compte, impossible de créer un secret. Désactivable d'une ligne (`'auth' => false`) pour une instance ouverte, quand l'accès est déjà restreint autrement.
 - **Lecture par lien** — la clé de déchiffrement voyage dans le fragment `#` de l'URL, jamais envoyé au serveur.
 - **Mot de passe optionnel** — mélangé à la clé lors de la dérivation (PBKDF2-SHA256, 310 000 itérations) ; sans lui, le lien seul ne suffit pas.
-- **Expiration** — de 1 heure à jamais, purge automatique.
+- **Expiration** — de 1 heure à jamais, ou une date et une heure précises, purge automatique.
 - **Destruction après lecture** — avec écran de confirmation avant de consommer le secret.
 - **Lien de suppression** — remis au créateur, utilisable uniquement par un utilisateur connecté.
 - **Interface multilingue** — français et anglais, choisis d'après la langue du navigateur ; ajouter une langue, c'est déposer un fichier dans `src/lang/`.
@@ -69,7 +69,7 @@ Le code est monté depuis le projet : toute modification est visible immédiatem
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 224 tests, quelques minutes
+./tests/run.sh          # 238 tests, quelques minutes
 ./tests/run.sh --help   # options : version, serveur, matrice complète…
 ```
 
@@ -83,7 +83,7 @@ Le lanceur démarre une instance neuve, joue les cinq suites et détruit tout : 
 | Instance ouverte | 19 | Second conteneur sans authentification : création libre, CSRF toujours exigée, garanties inchangées |
 | Navigateur | 36 | Chromium réel : cryptographie de bout en bout, parcours d'interface, langue servie |
 
-Les tests navigateur exercent la partie que rien d'autre ne couvre — `deriveKey`, `encryptText`, `decryptPayload` — et vérifient qu'un chiffré altéré d'un seul bit est rejeté. L'ensemble a été éprouvé par mutation : vingt-deux régressions introduites volontairement dans le code, vingt-deux détectées. Voir [`tests/README.md`](tests/README.md).
+Les tests navigateur exercent la partie que rien d'autre ne couvre — `deriveKey`, `encryptText`, `decryptPayload` — et vérifient qu'un chiffré altéré d'un seul bit est rejeté. L'ensemble a été éprouvé par mutation : vingt-quatre régressions introduites volontairement dans le code, vingt-quatre détectées. Voir [`tests/README.md`](tests/README.md).
 
 ### Avec PHP seul
 
@@ -192,7 +192,7 @@ Tout se passe dans `config.php`, qui ne contient que des valeurs littérales : �
 | `db` | `data/stashbin.sqlite` | Chemin de la base SQLite |
 | `auth` | `true` | Authentification exigée pour créer et supprimer |
 | `max_size` | 2 Mio | Taille maximale du payload chiffré |
-| `expirations` / `default_expiration` | 1 h → jamais, `1w` | Durées de vie proposées |
+| `expirations` / `default_expiration` | 1 h → jamais, `1w` | Durées de vie proposées, à côté de la date et l'heure que le créateur peut choisir |
 | `default_locale` | `en` | Langue servie quand celle du navigateur n'est pas traduite |
 | `session_name` | `stashbin` | Nom du cookie de session |
 

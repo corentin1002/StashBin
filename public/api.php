@@ -108,12 +108,20 @@ if ($method === 'POST') {
     // describes the content, not even a label.
     $user = current_user();
 
+    // "custom" is not one of the configured lifetimes: it carries an instant of
+    // the creator's own choosing, sent as a Unix timestamp.
     $expirations = config()['expirations'];
     $expireKey = $body['expire'] ?? config()['default_expiration'];
-    if (!array_key_exists($expireKey, $expirations)) {
+    if ($expireKey === 'custom') {
+        $expires = custom_expiry($body['expires_at'] ?? null, time());
+        if ($expires === null) {
+            json_error(400, 'bad_expiry');
+        }
+    } elseif (!array_key_exists($expireKey, $expirations)) {
         json_error(400, 'unknown_expiration');
+    } else {
+        $expires = $expirations[$expireKey] === null ? null : time() + $expirations[$expireKey];
     }
-    $expires = $expirations[$expireKey] === null ? null : time() + $expirations[$expireKey];
 
     purge_expired();
 

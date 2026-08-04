@@ -117,6 +117,48 @@ document.addEventListener('click', (ev) => {
 
 const createForm = document.getElementById('create-form');
 if (createForm) {
+  const expire = document.getElementById('expire');
+  const expireAtField = document.getElementById('expire-at-field');
+  const expireDate = document.getElementById('expire-date');
+  const expireTime = document.getElementById('expire-time');
+
+  const pad = (n) => String(n).padStart(2, '0');
+  const dateValue = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const timeValue = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+  /** The instant the two fields denote, in seconds, or NaN if either is empty. */
+  function chosenInstant() {
+    if (!expireDate.value || !expireTime.value) return NaN;
+    return Math.floor(new Date(`${expireDate.value}T${expireTime.value}`).getTime() / 1000);
+  }
+
+  /** Now, rounded up to the next whole minute — the fields have no seconds. */
+  function nextMinute() {
+    const d = new Date(Date.now() + 60000);
+    d.setSeconds(0, 0);
+    return d;
+  }
+
+  function syncExpiry() {
+    const custom = expire.value === 'custom';
+    expireAtField.classList.toggle('hidden', !custom);
+    expireDate.required = custom;
+    expireTime.required = custom;
+    if (!custom) return;
+    // Filled with the time it is, so that only what matters has to be changed,
+    // and refreshed whenever the fields are empty or already behind the clock:
+    // a form left open for an hour must not offer an instant already past.
+    const soon = nextMinute();
+    if (!(chosenInstant() > Date.now() / 1000)) {
+      expireDate.value = dateValue(soon);
+      expireTime.value = timeValue(soon);
+    }
+    expireDate.min = dateValue(soon);
+  }
+
+  expire.addEventListener('change', syncExpiry);
+  syncExpiry();
+
   createForm.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     hide('create-error');
@@ -125,6 +167,19 @@ if (createForm) {
     btn.disabled = true;
     btn.textContent = t('encrypting');
     try {
+      // The instant is read before anything is encrypted: a date already past
+      // is the visitor's mistake to fix, not work to throw away afterwards.
+      let expiresAt = null;
+      if (expire.value === 'custom') {
+        expiresAt = chosenInstant();
+        if (!Number.isFinite(expiresAt) || expiresAt * 1000 <= Date.now()) {
+          // Put the fields back on a usable instant rather than leave the
+          // visitor to work out which of the two is at fault.
+          syncExpiry();
+          throw new Error(t('bad_expiry'));
+        }
+      }
+
       const text = document.getElementById('secret').value;
       const password = document.getElementById('password').value;
       const { urlKey, payload } = await encryptText(text, password);
@@ -137,7 +192,8 @@ if (createForm) {
         },
         body: JSON.stringify({
           payload,
-          expire: document.getElementById('expire').value,
+          expire: expire.value,
+          expires_at: expiresAt,
           burn: document.getElementById('burn').checked,
         }),
       });
@@ -166,6 +222,7 @@ if (createForm) {
     document.getElementById('secret').value = '';
     document.getElementById('password').value = '';
     document.getElementById('burn').checked = false;
+    syncExpiry();
     hide('result');
     createForm.classList.remove('hidden');
   });

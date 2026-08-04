@@ -21,15 +21,15 @@ The runner builds the image, starts a fresh instance, creates a test account, pl
 
 ## What is covered
 
-**224 tests** across five suites.
+**238 tests** across five suites.
 
 | Suite | Tests | Scope |
 |---|--:|---|
-| `unit.test.php` | 64 | Functions in `src/bootstrap.php` without going through HTTP: escaping, configuration and environment overrides, database schema and its migration, purging expired secrets, CSRF tokens, dates, language negotiation and dictionaries |
-| `api.test.php` | 53 | Business rules over HTTP: authentication, CSRF, payload validation, lifetimes, burn after reading, deletion links, ownership, the access log and the headstones left behind, refused methods, error codes and the language of the response |
+| `unit.test.php` | 69 | Functions in `src/bootstrap.php` without going through HTTP: escaping, configuration and environment overrides, database schema and its migration, purging expired secrets, CSRF tokens, dates and the expiry instants a creator may choose, language negotiation and dictionaries |
+| `api.test.php` | 58 | Business rules over HTTP: authentication, CSRF, payload validation, lifetimes preset and chosen, burn after reading, deletion links, ownership, the access log and the headstones left behind, refused methods, error codes and the language of the response |
 | `security.test.php` | 36 | The guarantees the README makes: nothing outside `public/`, hardening headers, session and fixation, hashed storage, one creator's inventory kept out of another's reach, sweeps that spare live secrets, injection, and the fact that choosing a language opens nothing |
 | `noauth.test.php` | 22 | Open instance (`auth` set to false): creation without an account, CSRF still required, deletion by the token alone, no inventory, no owner and nothing recorded about readers, and everything that does not move |
-| `browser.test.mjs` | 49 | Real Chromium: end-to-end cryptography, complete interface journeys, the creator's inventory as they see it, the interface served in the browser's language, and the layout on a phone-sized screen |
+| `browser.test.mjs` | 53 | Real Chromium: end-to-end cryptography, complete interface journeys, the creator's inventory as they see it, an expiry picked by hand, the interface served in the browser's language, and the layout on a phone-sized screen |
 
 The PHP tests run **inside the application container**, under the `www-data` identity. They can therefore compare the HTTP response with what is actually written to the database — that is how we check that a deletion token really is stored hashed, or that a payload is never decrypted server-side.
 
@@ -68,7 +68,7 @@ Available assertions: `assert_true`, `assert_eq`, `assert_contains`, `assert_not
 
 ## Checking that the test set is worth anything
 
-A test set that never fails proves nothing. This one has been validated by mutation: twenty-two regressions were introduced into the code one at a time, and **all twenty-two were caught** — CSRF check removed, creation opened to anonymous visitors, read-once secret not destroyed, deletion token stored in the clear, size limit removed, purging disabled, HTML escaping neutralised, CSP weakened, cookie without `HttpOnly`, session not regenerated on sign-in, PBKDF2 iterations lowered to 1,000, URL key reduced to 64 bits, `load_lang()` stripped of its path guard, `?lang=` ignored by negotiation, `Vary: Accept-Language` removed, a key missing from the English translation, an API error stripped of its stable code, JavaScript comparing the error message rather than the code, the previous stylesheet put back (four of the five phone-sized tests fail), the inventory's ownership filter removed, the access log left unwritten, and a burned secret deleted outright instead of leaving a headstone.
+A test set that never fails proves nothing. This one has been validated by mutation: twenty-four regressions were introduced into the code one at a time, and **all twenty-four were caught** — CSRF check removed, creation opened to anonymous visitors, read-once secret not destroyed, deletion token stored in the clear, size limit removed, purging disabled, HTML escaping neutralised, CSP weakened, cookie without `HttpOnly`, session not regenerated on sign-in, PBKDF2 iterations lowered to 1,000, URL key reduced to 64 bits, `load_lang()` stripped of its path guard, `?lang=` ignored by negotiation, `Vary: Accept-Language` removed, a key missing from the English translation, an API error stripped of its stable code, JavaScript comparing the error message rather than the code, the previous stylesheet put back (four of the five phone-sized tests fail), the inventory's ownership filter removed, the access log left unwritten, a burned secret deleted outright instead of leaving a headstone, a chosen expiry accepted in the past, and its upper bound removed.
 
 That last one deserves a word: it is exactly the regression the first translation produced. `showError()` rested on `err.message === 'introuvable'`, which stopped working the moment the message could be in English. The contract is now the `code` field, and a browser test checks it.
 

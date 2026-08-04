@@ -52,6 +52,7 @@ $expirations = config()['expirations'];
           <?php foreach ($expirations as $key => $seconds): ?>
           <option value="<?= e($key) ?>" <?= $key === config()['default_expiration'] ? 'selected' : '' ?>><?= e(t('expire.' . $key)) ?></option>
           <?php endforeach; ?>
+          <option value="custom"><?= e(t('expire.custom')) ?></option>
         </select>
       </label>
       <label class="checkbox">
@@ -59,6 +60,20 @@ $expirations = config()['expirations'];
       </label>
       <label><?= e(t('create.password_label')) ?>
         <input type="password" id="password" autocomplete="new-password" placeholder="<?= e(t('create.password_placeholder')) ?>">
+      </label>
+    </div>
+
+    <!-- Revealed by the script when "custom" is picked; hidden rather than
+         absent, so that it needs no round trip to appear. Two native fields
+         rather than one datetime-local: browsers give a calendar to the first
+         and a clock to the second, where the combined control leaves the time
+         to be typed. -->
+    <div id="expire-at-field" class="options hidden">
+      <label><?= e(t('create.expire_date_label')) ?>
+        <input type="date" id="expire-date">
+      </label>
+      <label><?= e(t('create.expire_time_label')) ?>
+        <input type="time" id="expire-time">
       </label>
     </div>
 

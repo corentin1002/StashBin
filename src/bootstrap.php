@@ -112,6 +112,27 @@ function migrate_schema(PDO $pdo): void
     }
 }
 
+// Validates an expiry instant chosen by the creator, given as a Unix timestamp
+// in seconds. Returns null when it cannot be used, which the caller turns into
+// a 400: never a silently corrected value, since a secret outliving what its
+// author asked for is the one mistake that matters here.
+//
+// The upper bound is the end of year 9999, which is what a date input can
+// express — a guard against a mistyped year, not a policy: "never" is on offer
+// in the list above it.
+function custom_expiry(mixed $value, int $now): ?int
+{
+    // JSON integers arrive as int; a numeric string is accepted rather than
+    // refused on a technicality, but "12abc" or a float is not.
+    if (is_string($value) && preg_match('/^\d{1,12}$/', $value)) {
+        $value = (int) $value;
+    }
+    if (!is_int($value) || $value <= $now || $value > 253402300799) {
+        return null;
+    }
+    return $value;
+}
+
 // Wipes the ciphertext but keeps the row, so that the creator's list can still
 // say what became of the secret and when. A secret nobody owns has no list to
 // appear in: it goes for good, and its access log with it.

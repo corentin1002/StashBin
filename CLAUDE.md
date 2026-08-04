@@ -18,7 +18,7 @@ Ce sont les promesses du produit. Une modification qui en casse une est un bug, 
 ## Commandes
 
 ```bash
-./tests/run.sh                    # 224 tests, quelques minutes — à lancer avant de valider
+./tests/run.sh                    # 238 tests, quelques minutes — à lancer avant de valider
 ./tests/run.sh --no-browser       # sans Chromium, plus rapide pendant l'itération
 ./tests/run.sh --matrix           # suites PHP sur les huit combinaisons version × serveur
 
@@ -58,6 +58,8 @@ Chacun a coûté du temps une fois ; ils sont documentés pour ne pas le refaire
 - **Les tests navigateur partagent l'espace réseau du conteneur applicatif** pour obtenir une origine `127.0.0.1`, donc un contexte sécurisé. Ne remplacez pas ce montage par un drapeau Chromium de contournement : il ne fonctionne pas de façon fiable.
 - **`view.php` sonde `?meta` avant tout le reste.** Un lecteur qui arrive après la disparition du secret n'atteint donc jamais la requête du payload : c'est pourquoi le journal enregistre la sonde *quand le secret est mort*, et elle seule. La sonde sur un secret vivant, elle, n'est pas une lecture — la compter afficherait « consulté » pour un secret que personne n'a vu.
 - **`created` est en secondes.** Deux secrets créés dans la même seconde ne s'ordonnent pas d'eux-mêmes : l'inventaire trie `created DESC, rowid DESC`. Sans le second critère, l'ordre est indéterminé et un test navigateur le voit passer une fois sur deux.
+- **La validation HTML5 native empêche l'événement `submit` d'être émis.** Le champ de date porte un `min` : Chromium refuse le formulaire lui-même, le gestionnaire `submit` n'est jamais appelé, et un test qui attend le message de l'application patiente jusqu'au délai d'attente. Le filet applicatif reste indispensable — un navigateur qui ne connaît pas `type="date"` le rend en champ texte et ne valide rien — et pour l'éprouver, un test pose `form.noValidate = true`.
+- **L'expiration choisie se saisit en deux champs, `date` et `time`.** Un `datetime-local` unique donne un calendrier à Firefox et rien pour l'heure, qu'il faut taper. Les deux champs partent d'aujourd'hui à la minute suivante, et `syncExpiry()` les rafraîchit dès que l'instant qu'ils portent est passé : c'est ce qui évite qu'un formulaire laissé ouvert propose un moment révolu.
 - **Ne restaurez jamais un fichier par `git checkout` pendant une mutation de test** tant que le travail n'est pas commité : les fichiers nouveaux ne sont pas connus de git, et les fichiers modifiés reviennent à `HEAD`, pas à l'état d'avant la mutation. Commitez d'abord, mutez ensuite.
 
 ## Organisation
@@ -96,7 +98,7 @@ Les suites PHP tournent **dans le conteneur applicatif** : elles peuvent donc co
 
 Le libellé d'un test se lit comme une phrase et décrit le comportement attendu, pas la mécanique : « un visiteur anonyme ne peut pas créer de secret (401) », pas « test création 401 ».
 
-Après avoir ajouté une fonctionnalité, cassez-la volontairement et vérifiez qu'au moins un test s'en aperçoit. Le jeu de test actuel a été validé ainsi : vingt-deux régressions introduites, vingt-deux détectées.
+Après avoir ajouté une fonctionnalité, cassez-la volontairement et vérifiez qu'au moins un test s'en aperçoit. Le jeu de test actuel a été validé ainsi : vingt-quatre régressions introduites, vingt-quatre détectées.
 
 ## Git
 

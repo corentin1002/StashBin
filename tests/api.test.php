@@ -133,6 +133,58 @@ test('with nothing specified, the configured default lifetime applies', function
     assert_true(abs($stored - ($before + $expected)) <= 1, 'default lifetime applied');
 });
 
+test('a chosen instant is stored as sent', function () use ($http, $token) {
+    $at = time() + 12345;
+    $id = $http->createSecret(['raw' => [
+        'payload' => ['v' => 1, 'iv' => 'A', 'salt' => 'B', 'iter' => 310000, 'pwd' => 0, 'ct' => 'C'],
+        'expire' => 'custom',
+        'expires_at' => $at,
+    ]], $token)->json()['id'];
+    $stored = db()->query('SELECT expires FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
+    assert_eq($at, $stored, 'the instant asked for, to the second');
+});
+
+test('a chosen instant in the past is refused (400)', function () use ($http, $token) {
+    $res = $http->createSecret(['raw' => [
+        'payload' => ['v' => 1, 'iv' => 'A', 'salt' => 'B', 'iter' => 310000, 'pwd' => 0, 'ct' => 'C'],
+        'expire' => 'custom',
+        'expires_at' => time() - 60,
+    ]], $token);
+    assert_eq(400, $res->status, 'a date already past creates nothing');
+    assert_eq('bad_expiry', $res->json()['code'], 'stable code');
+});
+
+test('"custom" without an instant is refused (400)', function () use ($http, $token) {
+    // Silently falling back to the default lifetime would give the secret a
+    // life its author never asked for.
+    $res = $http->createSecret(['expire' => 'custom'], $token);
+    assert_eq(400, $res->status, 'no instant, no secret');
+    assert_eq('bad_expiry', $res->json()['code'], 'stable code');
+});
+
+test('a chosen instant beyond year 9999 is refused (400)', function () use ($http, $token) {
+    $res = $http->createSecret(['raw' => [
+        'payload' => ['v' => 1, 'iv' => 'A', 'salt' => 'B', 'iter' => 310000, 'pwd' => 0, 'ct' => 'C'],
+        'expire' => 'custom',
+        'expires_at' => 253402300800,
+    ]], $token);
+    assert_eq(400, $res->status, 'a mistyped year is refused');
+});
+
+test('a secret with a chosen expiry dies at that instant, like any other', function () use ($http, $token) {
+    $id = $http->createSecret(['raw' => [
+        'payload' => ['v' => 1, 'iv' => 'A', 'salt' => 'B', 'iter' => 310000, 'pwd' => 0, 'ct' => 'C'],
+        'expire' => 'custom',
+        'expires_at' => time() + 3600,
+    ]], $token)->json()['id'];
+    assert_eq(200, $http->get('/api.php?id=' . $id)->status, 'readable before its instant');
+
+    db()->prepare('UPDATE pastes SET expires = ? WHERE id = ?')->execute([time() - 1, $id]);
+    assert_eq(404, $http->get('/api.php?id=' . $id)->status, 'gone once past');
+    $cause = db()->query('SELECT gone_cause FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
+    assert_eq('expired', $cause, 'and reported as expired, not as something else');
+});
+
 // ---------------------------------------------------------------------------
 group('Reading');
 

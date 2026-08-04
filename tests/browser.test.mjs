@@ -61,6 +61,11 @@ async function assertRejects(promise, what) {
   throw new Error(`${what} (no error thrown)`);
 }
 
+// The two expiry fields speak the browser's own timezone.
+const pad = (n) => String(n).padStart(2, '0');
+const dateValue = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const timeValue = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
 // --- Navigation helpers ------------------------------------------------------
 
 async function login(page) {
@@ -71,11 +76,15 @@ async function login(page) {
 }
 
 /** Fills the creation form and returns the two links produced. */
-async function createSecret(page, { text, password = '', expire = '1h', burn = false }) {
+async function createSecret(page, { text, password = '', expire = '1h', burn = false, at = null }) {
   await page.goto(`${BASE}/index.php`);
   await page.fill('#secret', text);
   if (password) await page.fill('#password', password);
   await page.selectOption('#expire', expire);
+  if (at) {
+    await page.fill('#expire-date', dateValue(at));
+    await page.fill('#expire-time', timeValue(at));
+  }
   if (burn) await page.check('#burn');
   await page.click('#submit-btn');
   await page.waitForSelector('#result:not(.hidden)', { timeout: 20000 });
@@ -413,6 +422,78 @@ await test('the creator can delete their secret through the link provided', asyn
   await q.waitForSelector('#status:not(.hidden)', { timeout: 20000 });
   assertTrue((await q.textContent('#status')).includes('n’existe pas ou plus'), 'secret now not found');
   await q.close();
+});
+
+// ---------------------------------------------------------------------------
+group('Expiry chosen by the creator');
+
+await test('the date and time fields appear only once "specific date" is picked', async () => {
+  await page.goto(`${BASE}/index.php`);
+  assertTrue(!(await page.isVisible('#expire-date')), 'hidden under the ordinary lifetimes');
+  await page.selectOption('#expire', 'custom');
+  assertTrue(await page.isVisible('#expire-date'), 'a calendar for the date');
+  assertTrue(await page.isVisible('#expire-time'), 'and a clock for the time');
+  await page.selectOption('#expire', '1h');
+  assertTrue(!(await page.isVisible('#expire-date')), 'and folded away again');
+});
+
+await test('they open on today, at the time it is', async () => {
+  // An empty pair of fields would have to be filled twice over; what the
+  // visitor usually changes is the day, not the minute.
+  await page.goto(`${BASE}/index.php`);
+  await page.selectOption('#expire', 'custom');
+  const [date, time] = await Promise.all([page.inputValue('#expire-date'), page.inputValue('#expire-time')]);
+  const soon = new Date(Date.now() + 60000);
+  assertEq(dateValue(soon), date, "today's date");
+  // Rounded up to the next whole minute, so the offer is never already past.
+  const drift = Math.abs(new Date(`${date}T${time}`).getTime() - soon.getTime());
+  assertTrue(drift < 61000, `within a minute of now (got ${time})`);
+  assertTrue(new Date(`${date}T${time}`).getTime() > Date.now(), 'and in the future');
+});
+
+await test('a secret expires at the instant its creator picked', async () => {
+  // The field speaks the visitor's timezone; what the list shows is UTC. Both
+  // must denote the same instant, which is what this checks.
+  const when = new Date(Date.now() + 3 * 3600 * 1000);
+  when.setSeconds(0, 0);
+  const { share } = await createSecret(page, { text: 'à durée choisie', expire: 'custom', at: when });
+  assertEq('à durée choisie', await readSecret(context, share), 'readable in the meantime');
+
+  await page.goto(`${BASE}/secrets.php`);
+  const id = new URL(share).searchParams.get('id');
+  const facts = await page.locator('article.secret').filter({ hasText: id }).first().locator('.facts').textContent();
+  const expected = when.toISOString().slice(0, 16).replace('T', ' ');
+  assertTrue(facts.includes(expected), `the list shows ${expected} UTC (got: ${facts.trim()})`);
+});
+
+await test('a date already past never reaches the encryption', async () => {
+  // Two lines of defence, and both are exercised here: the input carries a
+  // "min", so the browser itself refuses to submit; and the script checks the
+  // instant before encrypting, for the browsers that render datetime-local as a
+  // plain text field and validate nothing.
+  await page.goto(`${BASE}/index.php`);
+  await page.fill('#secret', 'jamais chiffré');
+  await page.selectOption('#expire', 'custom');
+  const past = new Date(Date.now() - 86400000);
+  await page.fill('#expire-date', dateValue(past));
+  await page.fill('#expire-time', timeValue(past));
+
+  await page.click('#submit-btn');
+  await page.waitForTimeout(500);
+  assertTrue(!(await page.isVisible('#result')), 'the browser refuses the form outright');
+
+  // Same submission, with native validation out of the way.
+  await page.evaluate(() => { document.getElementById('create-form').noValidate = true; });
+  await page.click('#submit-btn');
+  await page.waitForSelector('#create-error:not(.hidden)', { timeout: 20000 });
+  const error = await page.textContent('#create-error');
+  assertTrue(error.includes('à venir'), `the visitor is told what to fix (got: ${error})`);
+  assertTrue(!(await page.isVisible('#result')), 'and still nothing was created');
+  // The fields are put back on a usable instant rather than left at fault.
+  assertTrue(
+    new Date(`${await page.inputValue('#expire-date')}T${await page.inputValue('#expire-time')}`).getTime() > Date.now(),
+    'the fields are reset to something usable',
+  );
 });
 
 // ---------------------------------------------------------------------------
