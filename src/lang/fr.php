@@ -102,6 +102,8 @@ return [
     'js.loading'              => 'Chargement…',
     'js.decrypting'           => 'Déchiffrement…',
     'js.copied'               => 'Copié ✔',
+    'js.show_password'        => 'Afficher',
+    'js.hide_password'        => 'Masquer',
     'js.create_failed'        => 'Échec de la création : {error}',
     'js.bad_password'         => 'Mot de passe incorrect.',
     'js.bad_expiry'           => 'Choisissez une date et une heure à venir.',

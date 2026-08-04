@@ -113,6 +113,19 @@ document.addEventListener('click', (ev) => {
   });
 });
 
+// Shows what a password field holds, so that what guards the secret can be
+// read back before it is set for good. The field's own type carries the state:
+// nothing else has to remember it.
+document.addEventListener('click', (ev) => {
+  const btn = ev.target.closest('button.reveal');
+  if (!btn) return;
+  const field = document.getElementById(btn.dataset.reveal);
+  const shown = field.type === 'text';
+  field.type = shown ? 'password' : 'text';
+  btn.setAttribute('aria-pressed', String(!shown));
+  btn.textContent = shown ? t('show_password') : t('hide_password');
+});
+
 // --- Dates ------------------------------------------------------------------
 
 // Instants are stored and served in UTC, because the server has no way of
@@ -236,7 +249,14 @@ if (createForm) {
 
   document.getElementById('new-paste').addEventListener('click', () => {
     document.getElementById('secret').value = '';
-    document.getElementById('password').value = '';
+    // Emptied and hidden again: the next password starts under the same
+    // protection as the first, whatever the previous one was revealed as.
+    const password = document.getElementById('password');
+    password.value = '';
+    password.type = 'password';
+    const reveal = document.querySelector('button.reveal[data-reveal="password"]');
+    reveal.setAttribute('aria-pressed', 'false');
+    reveal.textContent = t('show_password');
     document.getElementById('burn').checked = false;
     syncExpiry();
     hide('result');

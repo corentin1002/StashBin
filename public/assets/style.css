@@ -122,9 +122,12 @@ button { margin-top: 1.25rem; color: #fff; background: var(--accent); }
 }
 button:disabled { opacity: 0.6; cursor: wait; }
 
-.copy-row { display: flex; gap: 0.5rem; align-items: center; }
-.copy-row input { flex: 1; }
-.copy-row button { margin-top: 0.35rem; white-space: nowrap; }
+/* A field and its button on one line. min-width: 0 because a flex item takes
+   the field's intrinsic width as its floor otherwise, which overflows a
+   phone-sized screen instead of shrinking. */
+.copy-row, .field-row { display: flex; gap: 0.5rem; align-items: center; }
+.copy-row input, .field-row input { flex: 1; min-width: 0; }
+.copy-row button, .field-row button { margin-top: 0.35rem; white-space: nowrap; }
 
 pre {
   padding: 1rem;

@@ -357,6 +357,38 @@ await test('a wrong password shows an error without revealing the secret', async
   await p.close();
 });
 
+await test('the password chosen at creation can be shown, then hidden again', async () => {
+  await page.goto(`${BASE}/index.php`);
+  await page.fill('#password', 'la phrase entière');
+  const toggle = page.locator('button.reveal[data-reveal="password"]');
+
+  await toggle.click();
+  assertEq('text', await page.getAttribute('#password', 'type'), 'the field shows what was typed');
+  assertEq('true', await toggle.getAttribute('aria-pressed'), 'the button announces that state');
+  assertEq('Masquer', (await toggle.textContent()).trim(), 'and offers to hide it again');
+
+  await toggle.click();
+  assertEq('password', await page.getAttribute('#password', 'type'), 'masked again');
+  assertEq('false', await toggle.getAttribute('aria-pressed'), 'the button follows');
+  assertEq('Afficher', (await toggle.textContent()).trim(), 'first label back');
+  assertEq('la phrase entière', await page.inputValue('#password'), 'the value never moved');
+});
+
+await test('the next secret starts with its password empty and masked', async () => {
+  await page.goto(`${BASE}/index.php`);
+  await page.fill('#secret', 'un premier secret');
+  await page.fill('#password', 'révélé');
+  const toggle = page.locator('button.reveal[data-reveal="password"]');
+  await toggle.click();
+  await page.click('#submit-btn');
+  await page.waitForSelector('#result:not(.hidden)', { timeout: 20000 });
+
+  await page.click('#new-paste');
+  assertEq('', await page.inputValue('#password'), 'password cleared');
+  assertEq('password', await page.getAttribute('#password', 'type'), 'and hidden again');
+  assertEq('Afficher', (await toggle.textContent()).trim(), 'the button says so too');
+});
+
 await test('a link whose key has been truncated decrypts nothing', async () => {
   const { share } = await createSecret(page, { text: 'truncated key' });
   const [url, key] = share.split('#');

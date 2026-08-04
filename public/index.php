@@ -63,7 +63,15 @@ $expirations = config()['expirations'];
         <input type="checkbox" id="burn"> <?= e(t('create.burn_label')) ?>
       </label>
       <label><?= e(t('create.password_label')) ?>
-        <input type="password" id="password" autocomplete="new-password" placeholder="<?= e(t('create.password_placeholder')) ?>">
+        <!-- A password typed once and never shown locks a secret nobody can
+             open any more: the reader is told to enter one, not which one.
+             Both labels of the toggle live under `js.`, because the script
+             swaps them; the page renders the first from that same key rather
+             than keep a second copy that would drift. -->
+        <div class="field-row">
+          <input type="password" id="password" autocomplete="new-password" placeholder="<?= e(t('create.password_placeholder')) ?>">
+          <button type="button" class="quiet reveal" data-reveal="password" aria-pressed="false"><?= e(t('js.show_password')) ?></button>
+        </div>
       </label>
     </div>
 

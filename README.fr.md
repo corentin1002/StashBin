@@ -69,7 +69,7 @@ Le code est monté depuis le projet : toute modification est visible immédiatem
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 261 tests, quelques minutes
+./tests/run.sh          # 263 tests, quelques minutes
 ./tests/run.sh --help   # options : version, serveur, matrice complète…
 ```
 
@@ -77,11 +77,11 @@ Le lanceur démarre une instance neuve, joue les cinq suites et détruit tout : 
 
 | Suite | Tests | Portée |
 |---|--:|---|
-| Unitaire | 56 | Fonctions de `src/bootstrap.php` : échappement, configuration, surcharges d'environnement, schéma, purge, CSRF, langue |
-| API | 44 | Règles métier via HTTP : authentification, validation, durées de vie, destruction après lecture, suppression, codes d'erreur |
-| Sécurité | 28 | Rien hors de `public/`, en-têtes, fixation de session, stockage haché, injections, choix de la langue |
-| Instance ouverte | 19 | Second conteneur sans authentification : création libre, CSRF toujours exigée, garanties inchangées |
-| Navigateur | 36 | Chromium réel : cryptographie de bout en bout, parcours d'interface, langue servie |
+| Unitaire | 81 | Fonctions de `src/bootstrap.php` : échappement, configuration, surcharges d'environnement, schéma, purge, CSRF, langue |
+| API | 60 | Règles métier via HTTP : authentification, validation, durées de vie, destruction après lecture, suppression, codes d'erreur |
+| Sécurité | 38 | Rien hors de `public/`, en-têtes, fixation de session, stockage haché, injections, choix de la langue |
+| Instance ouverte | 22 | Second conteneur sans authentification : création libre, CSRF toujours exigée, garanties inchangées |
+| Navigateur | 62 | Chromium réel : cryptographie de bout en bout, parcours d'interface, langue servie |
 
 Les tests navigateur exercent la partie que rien d'autre ne couvre — `deriveKey`, `encryptText`, `decryptPayload` — et vérifient qu'un chiffré altéré d'un seul bit est rejeté. L'ensemble a été éprouvé par mutation : vingt-huit régressions introduites volontairement dans le code, vingt-huit détectées. Voir [`tests/README.md`](tests/README.md).
 

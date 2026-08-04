@@ -21,7 +21,7 @@ The runner builds the image, starts a fresh instance, creates a test account, pl
 
 ## What is covered
 
-**261 tests** across five suites.
+**263 tests** across five suites.
 
 | Suite | Tests | Scope |
 |---|--:|---|
@@ -29,7 +29,7 @@ The runner builds the image, starts a fresh instance, creates a test account, pl
 | `api.test.php` | 60 | Business rules over HTTP: authentication, CSRF, payload validation, lifetimes preset and chosen, burn after reading and the single reader it is promised to, deletion links, ownership, the access log and the headstones left behind, refused methods, error codes and the language of the response |
 | `security.test.php` | 38 | The guarantees the README makes: nothing outside `public/`, hardening headers, session and fixation, hashed storage, nothing kept in a cache, one creator's inventory kept out of another's reach, sweeps that spare live secrets, injection, and the fact that choosing a language opens nothing |
 | `noauth.test.php` | 22 | Open instance (`auth` set to false): creation without an account, CSRF still required, deletion by the token alone, no inventory, no owner and nothing recorded about readers, and everything that does not move |
-| `browser.test.mjs` | 60 | Real Chromium: end-to-end cryptography, complete interface journeys, the creator's inventory as they see it, its badges and its dates in the reader's own timezone, an expiry picked by hand, the interface served in the browser's language, the layout on a phone-sized screen, and what a visitor without JavaScript is told |
+| `browser.test.mjs` | 62 | Real Chromium: end-to-end cryptography, complete interface journeys, the creator's inventory as they see it, its badges and its dates in the reader's own timezone, an expiry picked by hand, the interface served in the browser's language, the layout on a phone-sized screen, and what a visitor without JavaScript is told |
 
 The PHP tests run **inside the application container**, under the `www-data` identity. They can therefore compare the HTTP response with what is actually written to the database — that is how we check that a deletion token really is stored hashed, or that a payload is never decrypted server-side.
 

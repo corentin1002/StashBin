@@ -69,7 +69,7 @@ The code is mounted from the project: any change shows up immediately, with no r
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 261 tests, a few minutes
+./tests/run.sh          # 263 tests, a few minutes
 ./tests/run.sh --help   # options: version, server, full matrix…
 ```
 
@@ -77,11 +77,11 @@ The runner starts a fresh instance, plays the five suites and tears everything d
 
 | Suite | Tests | Scope |
 |---|--:|---|
-| Unit | 56 | Functions in `src/bootstrap.php`: escaping, configuration, environment overrides, schema, purging, CSRF, language |
-| API | 44 | Business rules over HTTP: authentication, validation, lifetimes, burn after reading, deletion, error codes |
-| Security | 28 | Nothing outside `public/`, headers, session fixation, hashed storage, injection, language selection |
-| Open instance | 19 | A second container without authentication: free creation, CSRF still required, guarantees unchanged |
-| Browser | 36 | Real Chromium: end-to-end cryptography, interface journeys, language served |
+| Unit | 81 | Functions in `src/bootstrap.php`: escaping, configuration, environment overrides, schema, purging, CSRF, language |
+| API | 60 | Business rules over HTTP: authentication, validation, lifetimes, burn after reading, deletion, error codes |
+| Security | 38 | Nothing outside `public/`, headers, session fixation, hashed storage, injection, language selection |
+| Open instance | 22 | A second container without authentication: free creation, CSRF still required, guarantees unchanged |
+| Browser | 62 | Real Chromium: end-to-end cryptography, interface journeys, language served |
 
 The browser tests exercise the part nothing else covers — `deriveKey`, `encryptText`, `decryptPayload` — and check that a ciphertext altered by a single bit is rejected. The whole set has been validated by mutation: twenty-eight regressions deliberately introduced into the code, twenty-eight caught. See [`tests/README.md`](tests/README.md).
 
