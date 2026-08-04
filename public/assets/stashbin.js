@@ -115,15 +115,23 @@ document.addEventListener('click', (ev) => {
 
 // Shows what a password field holds, so that what guards the secret can be
 // read back before it is set for good. The field's own type carries the state:
-// nothing else has to remember it.
+// nothing else has to remember it. The button shows no word to swap — the
+// stylesheet picks its glyph from aria-pressed — so only the name it is
+// announced and hovered by is rewritten here.
+function nameReveal(btn, shown) {
+  const label = shown ? t('hide_password') : t('show_password');
+  btn.setAttribute('aria-pressed', String(shown));
+  btn.setAttribute('aria-label', label);
+  btn.title = label;
+}
+
 document.addEventListener('click', (ev) => {
   const btn = ev.target.closest('button.reveal');
   if (!btn) return;
   const field = document.getElementById(btn.dataset.reveal);
   const shown = field.type === 'text';
   field.type = shown ? 'password' : 'text';
-  btn.setAttribute('aria-pressed', String(!shown));
-  btn.textContent = shown ? t('show_password') : t('hide_password');
+  nameReveal(btn, !shown);
 });
 
 // --- Dates ------------------------------------------------------------------
@@ -254,9 +262,7 @@ if (createForm) {
     const password = document.getElementById('password');
     password.value = '';
     password.type = 'password';
-    const reveal = document.querySelector('button.reveal[data-reveal="password"]');
-    reveal.setAttribute('aria-pressed', 'false');
-    reveal.textContent = t('show_password');
+    nameReveal(document.querySelector('button.reveal[data-reveal="password"]'), false);
     document.getElementById('burn').checked = false;
     syncExpiry();
     hide('result');

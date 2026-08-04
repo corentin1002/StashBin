@@ -362,15 +362,20 @@ await test('the password chosen at creation can be shown, then hidden again', as
   await page.fill('#password', 'la phrase entière');
   const toggle = page.locator('button.reveal[data-reveal="password"]');
 
+  assertTrue(await page.isVisible('.reveal .icon-show'), 'the eye is offered, not the struck-out one');
+
   await toggle.click();
   assertEq('text', await page.getAttribute('#password', 'type'), 'the field shows what was typed');
   assertEq('true', await toggle.getAttribute('aria-pressed'), 'the button announces that state');
-  assertEq('Masquer', (await toggle.textContent()).trim(), 'and offers to hide it again');
+  assertEq('Masquer', await toggle.getAttribute('aria-label'), 'and offers to hide it again');
+  assertTrue(await page.isVisible('.reveal .icon-hide'), 'the struck-out eye takes over');
+  assertTrue(await page.isHidden('.reveal .icon-show'), 'one glyph at a time');
 
   await toggle.click();
   assertEq('password', await page.getAttribute('#password', 'type'), 'masked again');
   assertEq('false', await toggle.getAttribute('aria-pressed'), 'the button follows');
-  assertEq('Afficher', (await toggle.textContent()).trim(), 'first label back');
+  assertEq('Afficher', await toggle.getAttribute('aria-label'), 'first name back');
+  assertTrue(await page.isVisible('.reveal .icon-show'), 'and the first glyph with it');
   assertEq('la phrase entière', await page.inputValue('#password'), 'the value never moved');
 });
 
@@ -386,7 +391,8 @@ await test('the next secret starts with its password empty and masked', async ()
   await page.click('#new-paste');
   assertEq('', await page.inputValue('#password'), 'password cleared');
   assertEq('password', await page.getAttribute('#password', 'type'), 'and hidden again');
-  assertEq('Afficher', (await toggle.textContent()).trim(), 'the button says so too');
+  assertEq('Afficher', await toggle.getAttribute('aria-label'), 'the button says so too');
+  assertTrue(await page.isVisible('.reveal .icon-show'), 'and shows it');
 });
 
 await test('a link whose key has been truncated decrypts nothing', async () => {

@@ -65,12 +65,28 @@ $expirations = config()['expirations'];
       <label><?= e(t('create.password_label')) ?>
         <!-- A password typed once and never shown locks a secret nobody can
              open any more: the reader is told to enter one, not which one.
-             Both labels of the toggle live under `js.`, because the script
-             swaps them; the page renders the first from that same key rather
-             than keep a second copy that would drift. -->
+             An icon rather than a word, because the button shares the line
+             with the field on a screen that has little room for either. Both
+             its names live under `js.`, because the script swaps them; the
+             page renders the first from that same key rather than keep a
+             second copy that would drift. The two glyphs are both here and
+             the stylesheet picks one from `aria-pressed`: nothing is drawn
+             that the accessible name does not already say. -->
         <div class="field-row">
           <input type="password" id="password" autocomplete="new-password" placeholder="<?= e(t('create.password_placeholder')) ?>">
-          <button type="button" class="quiet reveal" data-reveal="password" aria-pressed="false"><?= e(t('js.show_password')) ?></button>
+          <button type="button" class="quiet reveal" data-reveal="password" aria-pressed="false"
+                  aria-label="<?= e(t('js.show_password')) ?>" title="<?= e(t('js.show_password')) ?>">
+            <svg class="icon-show" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            <svg class="icon-hide" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+              <line x1="1" y1="1" x2="23" y2="23"></line>
+            </svg>
+          </button>
         </div>
       </label>
     </div>

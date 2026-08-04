@@ -129,6 +129,16 @@ button:disabled { opacity: 0.6; cursor: wait; }
 .copy-row input, .field-row input { flex: 1; min-width: 0; }
 .copy-row button, .field-row button { margin-top: 0.35rem; white-space: nowrap; }
 
+/* An icon button: the padding of a worded one would eat the field it sits
+   next to. It stretches instead of being padded to size, so that it keeps the
+   field's height whatever that height becomes. Which glyph shows is read off
+   aria-pressed, so the state is declared once, where assistive technology
+   already looks for it. */
+.reveal { align-self: stretch; padding: 0.55rem; line-height: 0; }
+.reveal svg { display: block; }
+.reveal[aria-pressed="false"] .icon-hide,
+.reveal[aria-pressed="true"] .icon-show { display: none; }
+
 pre {
   padding: 1rem;
   background: var(--bg);
@@ -240,6 +250,9 @@ td.agent { min-width: 16rem; white-space: normal; color: var(--muted); }
 @media (pointer: coarse), (max-width: 30rem) {
   button, .btn { min-height: 44px; }
   label.checkbox { min-height: 44px; }
+  /* An icon button is as narrow as it is tall: the height rule alone would
+     leave a target no thumb can aim at. */
+  .reveal { min-width: 44px; }
   /* Padding rather than a height: a flex summary loses its disclosure marker
      on WebKit and Blink. */
   summary { padding-block: 0.8rem; }
