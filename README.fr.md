@@ -69,7 +69,7 @@ Le code est monté depuis le projet : toute modification est visible immédiatem
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 223 tests, quelques minutes
+./tests/run.sh          # 224 tests, quelques minutes
 ./tests/run.sh --help   # options : version, serveur, matrice complète…
 ```
 

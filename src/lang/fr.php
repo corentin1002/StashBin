@@ -11,9 +11,9 @@
 return [
     // --- Creation page ------------------------------------------------------
     'create.page_title'          => 'StashBin — Nouveau secret',
-    'create.logged_in'           => 'Connecté en tant que {user} — {secrets} — {logout}',
-    'create.logout'              => 'déconnexion',
-    'create.my_secrets'          => 'mes secrets',
+    'create.logged_in'           => 'Connecté en tant que {user}',
+    'create.logout'              => 'Déconnexion',
+    'create.my_secrets'          => 'Mes secrets',
     'create.no_auth_notice'      => 'Authentification désactivée : quiconque atteint cette page peut créer un secret.',
     'create.secret_label'        => 'Secret à partager',
     'create.secret_placeholder'  => 'Collez ici le texte à chiffrer…',
@@ -53,7 +53,7 @@ return [
     'secrets.page_title'      => 'StashBin — Mes secrets',
     'secrets.heading'         => 'Mes secrets',
     'secrets.intro'           => 'Ce que vous avez créé, et ce qu\'il en est advenu. Chaque entrée porte l\'identifiant qui figure dans son lien : le serveur ne sait rien d\'autre du secret, et ne peut pas le déchiffrer — sa clé n\'a jamais quitté votre navigateur.',
-    'secrets.back'            => 'créer un secret',
+    'secrets.back'            => 'Créer un secret',
     'secrets.empty'           => 'Vous n\'avez encore créé aucun secret.',
     'secrets.created'         => 'Créé le {date}',
     'secrets.expires'         => 'Expire le {date}',

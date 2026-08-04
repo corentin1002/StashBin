@@ -423,6 +423,22 @@ function idOf(link) {
   return new URL(link).searchParams.get('id');
 }
 
+await test('the header navigates between creation and inventory', async () => {
+  // Buttons to look at, links to use: opening either in a new tab has to keep
+  // working, so these must stay anchors.
+  await page.goto(`${BASE}/index.php`);
+  const toInventory = page.locator('nav.actions a.btn').first();
+  assertEq('Mes secrets', (await toInventory.textContent()).trim(), 'the way to the inventory');
+  await toInventory.click();
+  await page.waitForURL('**/secrets.php*');
+
+  const back = page.locator('nav.actions a.btn').first();
+  assertEq('Créer un secret', (await back.textContent()).trim(), 'the way back');
+  await back.click();
+  await page.waitForURL('**/index.php*');
+  assertEq(1, await page.locator('#create-form').count(), 'back on the creation form');
+});
+
 await test('a secret just created heads the list, never read', async () => {
   const { share } = await createSecret(page, { text: 'à inventorier' });
   const id = idOf(share);

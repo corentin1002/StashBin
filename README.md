@@ -69,7 +69,7 @@ The code is mounted from the project: any change shows up immediately, with no r
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 223 tests, a few minutes
+./tests/run.sh          # 224 tests, a few minutes
 ./tests/run.sh --help   # options: version, server, full matrix…
 ```
 

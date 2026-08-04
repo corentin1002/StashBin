@@ -106,8 +106,10 @@ $csrf = csrf_token();
 <main>
   <header>
     <h1>🔐 <?= e(t('secrets.heading')) ?></h1>
-    <p class="muted"><a href="index.php<?= e(lang_param()) ?>"><?= e(t('secrets.back')) ?></a></p>
     <p class="muted"><?= e(t('secrets.intro')) ?></p>
+    <nav class="actions">
+      <a class="btn" href="index.php<?= e(lang_param()) ?>"><?= e(t('secrets.back')) ?></a>
+    </nav>
   </header>
 
   <?php if ($notice !== null): ?>

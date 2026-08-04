@@ -500,12 +500,16 @@ test('returns the key itself when it does not exist', function () {
 });
 
 test('t_html escapes the translation before inserting HTML into it', function () {
-    $out = t_html('create.logged_in', [
+    // An absent key comes back as itself, which gives a subject holding the two
+    // placeholders without tying this test to a string the interface may
+    // reword.
+    $out = t_html('{user} & {logout}', [
         '{user}' => '<strong>alice</strong>',
         '{logout}' => '<a href="logout.php">sortir</a>',
     ]);
     assert_contains('<strong>alice</strong>', $out, 'fragment inserted as-is');
     assert_contains('<a href="logout.php">sortir</a>', $out, 'link inserted as-is');
+    assert_contains('&amp;', $out, 'the translation itself is escaped');
 });
 
 test('t_html neutralises HTML coming from the translation', function () {

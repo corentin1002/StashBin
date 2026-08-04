@@ -89,23 +89,36 @@ textarea:focus, input:focus, select:focus {
 label.checkbox { display: flex; align-items: center; gap: 0.5rem; font-weight: 400; }
 label.checkbox input { width: auto; margin: 0; }
 
-button {
-  margin-top: 1.25rem;
+button, .btn {
   padding: 0.6rem 1.2rem;
   font: inherit;
   font-size: 1rem;
   font-weight: 600;
-  color: #fff;
-  background: var(--accent);
   border: none;
   border-radius: 8px;
   cursor: pointer;
 }
 
+button { margin-top: 1.25rem; color: #fff; background: var(--accent); }
+
+/* Navigation that looks like a button but stays a link: quiet, so that it
+   never competes with the action the page is there for. */
+.btn, button.quiet {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--border);
+  text-decoration: none;
+}
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1rem; }
+
 /* A tap leaves the hovered shade stuck on the button until something else is
    touched: there is no pointer to move away. */
 @media (hover: hover) {
   button:hover { background: var(--accent-hover); }
+  .btn:hover, button.quiet:hover { background: var(--bg); }
 }
 button:disabled { opacity: 0.6; cursor: wait; }
 
@@ -212,11 +225,6 @@ td.agent { min-width: 16rem; white-space: normal; color: var(--muted); }
 .sweep { margin: 0; }
 .sweep button { margin-top: 0; }
 
-button.quiet { color: var(--accent); background: none; border: 1px solid var(--border); }
-@media (hover: hover) {
-  button.quiet:hover { background: var(--bg); }
-}
-
 /* Below its max-width the card spans the whole screen: the horizontal "auto"
    margin collapses to zero and 2rem of padding on each side eats a fifth of a
    360px screen. */
@@ -227,7 +235,7 @@ button.quiet { color: var(--accent); background: none; border: 1px solid var(--b
 /* A fingertip needs about 44px. The width condition is there for the browsers
    that report a fine pointer while being driven by touch. */
 @media (pointer: coarse), (max-width: 30rem) {
-  button { min-height: 44px; }
+  button, .btn { min-height: 44px; }
   label.checkbox { min-height: 44px; }
   /* Padding rather than a height: a flex summary loses its disclosure marker
      on WebKit and Blink. */
