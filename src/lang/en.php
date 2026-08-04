@@ -8,6 +8,7 @@ return [
     'create.logout'              => 'Sign out',
     'create.my_secrets'          => 'My secrets',
     'create.no_auth_notice'      => 'Authentication is disabled: anyone who reaches this page can create a secret.',
+    'create.noscript'            => '⚠️ JavaScript is disabled. StashBin encrypts secrets in your browser: without it, this page cannot create anything.',
     'create.secret_label'        => 'Secret to share',
     'create.secret_placeholder'  => 'Paste the text to encrypt here…',
     'create.expire_label'        => 'Expiry',
@@ -35,7 +36,7 @@ return [
 
     // --- Reading page -------------------------------------------------------
     'view.page_title'        => 'StashBin — Shared secret',
-    'view.loading'           => 'Loading…',
+    'view.noscript'          => '⚠️ JavaScript is disabled. StashBin decrypts secrets in your browser: without it, this secret cannot be shown.',
     'view.burn_warning'      => '⚠️ This secret will be {emphasis}. Only continue if you are ready to read it now.',
     'view.burn_emphasis'     => 'destroyed as soon as it is read',
     'view.reveal'            => 'Show the secret',
@@ -91,6 +92,7 @@ return [
 
     // --- JavaScript strings -------------------------------------------------
     'js.encrypting'           => 'Encrypting…',
+    'js.loading'              => 'Loading…',
     'js.decrypting'           => 'Decrypting…',
     'js.copied'               => 'Copied ✔',
     'js.create_failed'        => 'Creation failed: {error}',

@@ -292,6 +292,9 @@ if (statusEl && !createForm) {
   }
 
   (async () => {
+    // Said here rather than in the HTML: without this script there is nothing
+    // to wait for, and a page that says "Loading…" for ever explains nothing.
+    setText('status', t('loading'));
     if (!id || !urlKey) {
       setText('status', t('missing_key'));
       return;

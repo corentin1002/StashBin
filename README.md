@@ -69,7 +69,7 @@ The code is mounted from the project: any change shows up immediately, with no r
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 244 tests, a few minutes
+./tests/run.sh          # 248 tests, a few minutes
 ./tests/run.sh --help   # options: version, server, full matrix…
 ```
 
@@ -280,6 +280,7 @@ data/               SQLite database (created automatically)
 - Deleting requires being signed in **and** either holding the token handed to the creator, or being the owner of the secret. Neither credential grants the other: a leaked deletion link is unusable by a stranger, and a signed-in stranger cannot delete what is not theirs.
 - Those last two rules — and only those — fall away if the operator sets `'auth' => false`: an explicit choice, never the shipped default.
 - **What the server does know**, and it is worth knowing: which account created which secret, and for every access the date, the reader's IP address as the web server saw it and the browser it declared. Nothing describes the content — not even a label — and the log exists to answer "did they read it?". It is kept as long as the entry stays in its creator's list. An instance without authentication records none of it: no owner, no log.
+- JavaScript is required to create and to read a secret, since that is where the encryption happens — the two pages concerned say so when it is off. Signing in and the inventory work without it.
 - `HttpOnly`/`SameSite` sessions, CSRF tokens, a strict CSP, hashed passwords (`password_hash`).
 - What a compromised server can do: delete secrets, serve malicious JavaScript to future visitors. This is the same limit as PrivateBin — server integrity still matters.
 

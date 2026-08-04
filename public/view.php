@@ -17,7 +17,12 @@ vary_language();
 <main>
   <header><h1>🔐 StashBin</h1></header>
 
-  <p id="status"><?= e(t('view.loading')) ?></p>
+  <!-- Empty: "Loading…" is written by the script, so that a page without one
+       does not promise something that will never arrive. -->
+  <p id="status"></p>
+  <noscript>
+    <p class="warn"><?= e(t('view.noscript')) ?></p>
+  </noscript>
 
   <section id="burn-confirm" class="hidden">
     <p class="warn"><?= t_html('view.burn_warning', [

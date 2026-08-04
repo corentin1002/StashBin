@@ -41,6 +41,10 @@ $expirations = config()['expirations'];
     <?php endif; ?>
   </header>
 
+  <noscript>
+    <p class="warn"><?= e(t('create.noscript')) ?></p>
+  </noscript>
+
   <form id="create-form">
     <label><?= e(t('create.secret_label')) ?>
       <textarea id="secret" rows="10" required placeholder="<?= e(t('create.secret_placeholder')) ?>"></textarea>

@@ -69,7 +69,7 @@ Le code est monté depuis le projet : toute modification est visible immédiatem
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 244 tests, quelques minutes
+./tests/run.sh          # 248 tests, quelques minutes
 ./tests/run.sh --help   # options : version, serveur, matrice complète…
 ```
 
@@ -280,6 +280,7 @@ data/               base SQLite (créée automatiquement)
 - Supprimer exige d'être connecté **et**, soit de posséder le jeton remis au créateur, soit d'être le propriétaire du secret. L'un ne vaut jamais l'autre : un lien de suppression qui fuit est inutilisable par un inconnu, et un inconnu connecté ne peut pas supprimer ce qui ne lui appartient pas.
 - Ces deux dernières règles tombent — et seulement elles — si l'exploitant met `'auth' => false` : c'est un choix explicite, jamais le défaut livré.
 - **Ce que le serveur sait**, et il vaut mieux le savoir : quel compte a créé quel secret, et pour chaque accès la date, l'adresse IP du lecteur telle que vue par le serveur web, et le navigateur qu'il déclare. Rien ne décrit le contenu — pas même une étiquette — et ce journal existe pour répondre à « est-ce qu'il l'a lu ? ». Il vit tant que l'entrée reste dans la liste de son créateur. Une instance sans authentification n'enregistre rien de tout ça : ni propriétaire, ni journal.
+- JavaScript est nécessaire pour créer et pour lire un secret, puisque c'est là que le chiffrement a lieu — les deux pages concernées le disent quand il est désactivé. La connexion et l'inventaire fonctionnent sans.
 - Sessions `HttpOnly`/`SameSite`, jetons CSRF, CSP stricte, mots de passe hachés (`password_hash`).
 - Ce que le serveur peut faire s'il est compromis : supprimer des secrets, servir du JavaScript malveillant aux futurs visiteurs. C'est la même limite que PrivateBin — l'intégrité du serveur reste importante.
 
