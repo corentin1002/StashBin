@@ -21,7 +21,7 @@ The runner builds the image, starts a fresh instance, creates a test account, pl
 
 ## What is covered
 
-**183 tests** across five suites.
+**188 tests** across five suites.
 
 | Suite | Tests | Scope |
 |---|--:|---|
@@ -29,13 +29,15 @@ The runner builds the image, starts a fresh instance, creates a test account, pl
 | `api.test.php` | 44 | Business rules over HTTP: authentication, CSRF, payload validation, lifetimes, burn after reading, deletion links, refused methods, error codes and the language of the response |
 | `security.test.php` | 28 | The guarantees the README makes: nothing outside `public/`, hardening headers, session and fixation, hashed storage, injection, and the fact that choosing a language opens nothing |
 | `noauth.test.php` | 19 | Open instance (`auth` set to false): creation without an account, CSRF still required, deletion by the token alone, and everything that does not move |
-| `browser.test.mjs` | 36 | Real Chromium: end-to-end cryptography, complete interface journeys, and the interface served in the browser's language |
+| `browser.test.mjs` | 41 | Real Chromium: end-to-end cryptography, complete interface journeys, the interface served in the browser's language, and the layout on a phone-sized screen |
 
 The PHP tests run **inside the application container**, under the `www-data` identity. They can therefore compare the HTTP response with what is actually written to the database — that is how we check that a deletion token really is stored hashed, or that a payload is never decrypted server-side.
 
 `noauth.test.php` needs a server started with `STASHBIN_AUTH=0`: the setting is read at startup, there is no hot switch. The runner therefore replaces the instance for the duration of that suite, then starts an ordinary one again for the browser tests. In `--matrix` mode the suite is replayed on all eight combinations: the environment-variable override goes through mod_php on one side and PHP-FPM on the other, which is not the same path.
 
 The browser tests drive Chromium against the real application. They cover the part nothing else exercises: `deriveKey`, `encryptText` and `decryptPayload` from `public/assets/stashbin.js`, called directly in the page, then the complete journeys — creation, reading back, password, burn after reading, deletion link, and the whole journey replayed in an English-speaking browser.
+
+The last group opens a **phone-sized context** (360×640, touch, then 667×375 for landscape). The server sends the same HTML to every client: everything that makes the interface usable on a phone lives in the stylesheet, and no other suite would notice it breaking. What is asserted is what a visitor would suffer from — a page wider than the screen, a field under 16px that makes Safari iOS zoom in on focus and never zoom back out, a target too small for a fingertip, a text area that swallows a landscape screen — never a CSS declaration.
 
 The language is **set explicitly on both sides**: the Chromium context through `locale: 'fr-FR'`, the HTTP client of `lib.php` through an `Accept-Language: fr` header on every request. The interface now follows the language requested, and the server's fallback serves English — leaving the language to chance would make every label the tests assert unpredictable.
 

@@ -60,13 +60,19 @@ textarea, input[type="text"], input[type="password"], select {
   margin-top: 0.35rem;
   padding: 0.6rem 0.7rem;
   font: inherit;
+  /* Fields sit inside a label, whose 0.9rem they would otherwise inherit.
+     Below 16px, Safari iOS zooms the page in on focus and never zooms back
+     out. */
+  font-size: 1rem;
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
 }
 
-textarea { resize: vertical; font-family: ui-monospace, monospace; }
+/* rows="10" is measured for a desktop screen; on a phone held sideways it
+   pushes the submit button out of sight. */
+textarea { resize: vertical; max-height: 50vh; font-family: ui-monospace, monospace; }
 
 textarea:focus, input:focus, select:focus {
   outline: 2px solid var(--accent);
@@ -87,6 +93,7 @@ button {
   margin-top: 1.25rem;
   padding: 0.6rem 1.2rem;
   font: inherit;
+  font-size: 1rem;
   font-weight: 600;
   color: #fff;
   background: var(--accent);
@@ -95,7 +102,11 @@ button {
   cursor: pointer;
 }
 
-button:hover { background: var(--accent-hover); }
+/* A tap leaves the hovered shade stuck on the button until something else is
+   touched: there is no pointer to move away. */
+@media (hover: hover) {
+  button:hover { background: var(--accent-hover); }
+}
 button:disabled { opacity: 0.6; cursor: wait; }
 
 .copy-row { display: flex; gap: 0.5rem; align-items: center; }
@@ -124,3 +135,23 @@ pre {
 }
 
 .hidden { display: none; }
+
+/* Below its max-width the card spans the whole screen: the horizontal "auto"
+   margin collapses to zero and 2rem of padding on each side eats a fifth of a
+   360px screen. */
+@media (max-width: 48rem) {
+  main { margin: 0.75rem; padding: 1.25rem; }
+}
+
+/* A fingertip needs about 44px. The width condition is there for the browsers
+   that report a fine pointer while being driven by touch. */
+@media (pointer: coarse), (max-width: 30rem) {
+  button { min-height: 44px; }
+  label.checkbox { min-height: 44px; }
+  .muted a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 0.25rem;
+  }
+}

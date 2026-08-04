@@ -18,6 +18,7 @@ Inspired by [PrivateBin](https://github.com/PrivateBin/PrivateBin), with one key
 - **Burn after reading** — with a confirmation screen before the secret is consumed.
 - **Deletion link** — handed to the creator, usable only by a signed-in user.
 - **Multilingual interface** — English and French, chosen from the browser's language; adding a language means dropping a file into `src/lang/`.
+- **Usable on a phone** — one stylesheet, no framework: the layout reflows down to a 360px screen, fields stay at 16px so Safari iOS does not zoom in on focus, and tap targets reach 44px.
 
 ## 🔍 How it works
 
@@ -67,7 +68,7 @@ The code is mounted from the project: any change shows up immediately, with no r
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 183 tests, a few minutes
+./tests/run.sh          # 188 tests, a few minutes
 ./tests/run.sh --help   # options: version, server, full matrix…
 ```
 
