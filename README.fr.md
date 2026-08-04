@@ -18,6 +18,7 @@ Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une dif
 - **Destruction après lecture** — avec écran de confirmation avant de consommer le secret.
 - **Lien de suppression** — remis au créateur, utilisable uniquement par un utilisateur connecté.
 - **Interface multilingue** — français et anglais, choisis d'après la langue du navigateur ; ajouter une langue, c'est déposer un fichier dans `src/lang/`.
+- **Utilisable sur téléphone** — une feuille de style, aucun framework : la mise en page se replie jusqu'à un écran de 360 px, les champs restent à 16 px pour que Safari iOS ne zoome pas à la mise au point, et les cibles tactiles atteignent 44 px.
 
 ## 🔍 Comment ça marche
 
@@ -67,7 +68,7 @@ Le code est monté depuis le projet : toute modification est visible immédiatem
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 183 tests, quelques minutes
+./tests/run.sh          # 188 tests, quelques minutes
 ./tests/run.sh --help   # options : version, serveur, matrice complète…
 ```
 

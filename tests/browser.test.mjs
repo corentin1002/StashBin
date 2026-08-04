@@ -492,6 +492,156 @@ await test('the creation journey works identically in English', async () => {
 await french.close();
 await english.close();
 
+// ---------------------------------------------------------------------------
+group('Phone-sized screens');
+
+// The server sends the same HTML to every client: everything that makes the
+// interface usable on a phone lives in the stylesheet, and nothing else in the
+// test set would notice it breaking. 360x640 is the narrowest screen still
+// worth designing for.
+const phone = await browser.newContext({
+  ignoreHTTPSErrors: true,
+  locale: 'fr-FR',
+  viewport: { width: 360, height: 640 },
+  isMobile: true,
+  hasTouch: true,
+});
+
+/** How far the page sticks out of the viewport, and what sticks out. */
+function sideways(p) {
+  return p.evaluate(() => {
+    const doc = document.documentElement;
+    return {
+      extra: doc.scrollWidth - doc.clientWidth,
+      culprits: [...document.querySelectorAll('body *')]
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && (r.right > doc.clientWidth + 1 || r.left < -1);
+        })
+        .map((el) => el.tagName.toLowerCase() + (el.id ? `#${el.id}` : '')),
+    };
+  });
+}
+
+/** Visible fields rendered below 16px. */
+function tinyFields(p) {
+  return p.evaluate(() => [...document.querySelectorAll('input:not([type="checkbox"]), select, textarea')]
+    .filter((el) => el.getBoundingClientRect().height > 0 && parseFloat(getComputedStyle(el).fontSize) < 16)
+    .map((el) => `${el.id || el.name}=${getComputedStyle(el).fontSize}`));
+}
+
+/** Visible tap targets shorter than 44px. */
+function tinyTargets(p) {
+  return p.evaluate(() => [...document.querySelectorAll('button, a, label.checkbox')]
+    .filter((el) => {
+      const h = el.getBoundingClientRect().height;
+      return h > 0 && h < 44;
+    })
+    .map((el) => `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}=${Math.round(el.getBoundingClientRect().height)}px`));
+}
+
+// Three pages measured together: the sign-in form, the creation page showing
+// its result, and a reader facing a single 340-character line — the worst case
+// for a narrow screen.
+const signin = await phone.newPage();
+await signin.goto(`${BASE}/login.php`);
+
+const author = await phone.newPage();
+await login(author);
+const phoneLinks = await createSecret(author, {
+  text: `ssh-rsa AAAAB3NzaC1yc2E${'x'.repeat(300)} user@host`,
+  expire: '1h',
+});
+
+const reader = await phone.newPage();
+await reader.goto(phoneLinks.share);
+await reader.waitForSelector('#content:not(.hidden)', { timeout: 20000 });
+
+const guarded = await createSecret(author, { text: 'protégé', password: 'phone', expire: '1h' });
+const asked = await phone.newPage();
+await asked.goto(guarded.share);
+await asked.waitForSelector('#password-prompt:not(.hidden)', { timeout: 20000 });
+
+const phonePages = [
+  ['login.php', signin],
+  ['index.php', author],
+  ['view.php', reader],
+  ['view.php (password)', asked],
+];
+
+await test('every page fits a 360px screen without touching its edges', async () => {
+  for (const [name, p] of phonePages) {
+    const { extra, culprits } = await sideways(p);
+    assertEq(0, extra, `${name}: ${extra}px too wide (${culprits.join(', ') || 'no element identified'})`);
+    // Below its max-width the card fills the screen and its "auto" margin
+    // collapses to zero, leaving border and rounded corners flush against the
+    // edges.
+    const left = await p.evaluate(() => Math.round(document.querySelector('main').getBoundingClientRect().left));
+    assertTrue(left >= 8, `${name}: the card starts at ${left}px, flush against the edge`);
+  }
+});
+
+await test('no field is rendered below 16px, which would make Safari iOS zoom in on focus', async () => {
+  // Under that size, iOS zooms the page in when a field takes focus and never
+  // zooms back out: the rest of the form ends up off-screen.
+  for (const [name, p] of phonePages) {
+    assertEq('', (await tinyFields(p)).join(', '), `${name}: fields too small`);
+  }
+});
+
+await test('buttons, links and checkbox rows can be hit with a fingertip', async () => {
+  for (const [name, p] of phonePages) {
+    assertEq('', (await tinyTargets(p)).join(', '), `${name}: targets under 44px`);
+  }
+});
+
+await test('the complete journey goes through with taps alone', async () => {
+  const p = await phone.newPage();
+  await p.goto(`${BASE}/index.php`);
+  const secret = 'écrit au doigt sur un téléphone';
+  await p.fill('#secret', secret);
+  // Tapping the label, not the 13px box: that widened row is exactly what the
+  // stylesheet is there to provide.
+  await p.tap('label.checkbox');
+  assertTrue(await p.isChecked('#burn'), 'tapping the row ticks the checkbox');
+  await p.fill('#password', 'phone');
+  await p.tap('#submit-btn');
+  await p.waitForSelector('#result:not(.hidden)', { timeout: 20000 });
+  const share = await p.inputValue('#share-link');
+  await p.close();
+
+  const q = await phone.newPage();
+  await q.goto(share);
+  await q.waitForSelector('#burn-confirm:not(.hidden)', { timeout: 20000 });
+  await q.tap('#reveal-btn');
+  await q.waitForSelector('#password-prompt:not(.hidden)', { timeout: 20000 });
+  await q.fill('#paste-password', 'phone');
+  await q.tap('#password-form button[type="submit"]');
+  await q.waitForSelector('#content:not(.hidden)', { timeout: 20000 });
+  assertEq(secret, await q.textContent('#secret-text'), 'text read back unchanged');
+  await q.close();
+});
+
+await test('a phone held sideways still shows more than the text area', async () => {
+  // rows="10" is measured for a desktop screen: left alone, the text area
+  // alone is taller than a landscape phone and the submit button never comes
+  // into view.
+  const landscape = await browser.newContext({
+    ignoreHTTPSErrors: true,
+    locale: 'fr-FR',
+    viewport: { width: 667, height: 375 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const p = await landscape.newPage();
+  await login(p);
+  const height = await p.evaluate(() => Math.round(document.getElementById('secret').getBoundingClientRect().height));
+  assertTrue(height <= 188, `the text area takes ${height}px of the 375 available`);
+  await landscape.close();
+});
+
+await phone.close();
+
 await browser.close();
 
 // ---------------------------------------------------------------------------
