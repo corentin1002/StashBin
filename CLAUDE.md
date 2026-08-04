@@ -18,7 +18,7 @@ Ce sont les promesses du produit. Une modification qui en casse une est un bug, 
 ## Commandes
 
 ```bash
-./tests/run.sh                    # 224 tests, quelques minutes — à lancer avant de valider
+./tests/run.sh                    # 237 tests, quelques minutes — à lancer avant de valider
 ./tests/run.sh --no-browser       # sans Chromium, plus rapide pendant l'itération
 ./tests/run.sh --matrix           # suites PHP sur les huit combinaisons version × serveur
 

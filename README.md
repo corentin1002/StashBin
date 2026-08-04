@@ -14,7 +14,7 @@ Inspired by [PrivateBin](https://github.com/PrivateBin/PrivateBin), with one key
 - **Authenticated creation** — accounts are managed from the CLI; without one, no secret can be created. Disabled by a single line (`'auth' => false`) for an open instance, when access is already restricted some other way.
 - **Read by link** — the decryption key travels in the URL's `#` fragment, which is never sent to the server.
 - **Optional password** — mixed into key derivation (PBKDF2-SHA256, 310,000 iterations); with it, the link alone is not enough.
-- **Expiry** — from 1 hour to never, with automatic purging.
+- **Expiry** — from 1 hour to never, or a date and time of your own choosing, with automatic purging.
 - **Burn after reading** — with a confirmation screen before the secret is consumed.
 - **Deletion link** — handed to the creator, usable only by a signed-in user.
 - **Multilingual interface** — English and French, chosen from the browser's language; adding a language means dropping a file into `src/lang/`.
@@ -69,7 +69,7 @@ The code is mounted from the project: any change shows up immediately, with no r
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 224 tests, a few minutes
+./tests/run.sh          # 237 tests, a few minutes
 ./tests/run.sh --help   # options: version, server, full matrix…
 ```
 

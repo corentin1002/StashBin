@@ -117,6 +117,29 @@ document.addEventListener('click', (ev) => {
 
 const createForm = document.getElementById('create-form');
 if (createForm) {
+  const expire = document.getElementById('expire');
+  const expireAtField = document.getElementById('expire-at-field');
+  const expireAt = document.getElementById('expire-at');
+
+  /** "YYYY-MM-DDTHH:mm" in the visitor's own timezone, as the input expects. */
+  function localValue(date) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+      + `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function syncExpiry() {
+    const custom = expire.value === 'custom';
+    expireAtField.classList.toggle('hidden', !custom);
+    expireAt.required = custom;
+    // A minute from now: the bound has to move with the clock, or a form left
+    // open would offer instants already past.
+    if (custom) expireAt.min = localValue(new Date(Date.now() + 60000));
+  }
+
+  expire.addEventListener('change', syncExpiry);
+  syncExpiry();
+
   createForm.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     hide('create-error');
@@ -125,6 +148,16 @@ if (createForm) {
     btn.disabled = true;
     btn.textContent = t('encrypting');
     try {
+      // The instant is read before anything is encrypted: a date already past
+      // is the visitor's mistake to fix, not work to throw away afterwards.
+      let expiresAt = null;
+      if (expire.value === 'custom') {
+        expiresAt = Math.floor(new Date(expireAt.value).getTime() / 1000);
+        if (!expireAt.value || !Number.isFinite(expiresAt) || expiresAt * 1000 <= Date.now()) {
+          throw new Error(t('bad_expiry'));
+        }
+      }
+
       const text = document.getElementById('secret').value;
       const password = document.getElementById('password').value;
       const { urlKey, payload } = await encryptText(text, password);
@@ -137,7 +170,8 @@ if (createForm) {
         },
         body: JSON.stringify({
           payload,
-          expire: document.getElementById('expire').value,
+          expire: expire.value,
+          expires_at: expiresAt,
           burn: document.getElementById('burn').checked,
         }),
       });
@@ -166,6 +200,7 @@ if (createForm) {
     document.getElementById('secret').value = '';
     document.getElementById('password').value = '';
     document.getElementById('burn').checked = false;
+    expireAt.value = '';
     hide('result');
     createForm.classList.remove('hidden');
   });

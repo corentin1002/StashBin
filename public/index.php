@@ -52,6 +52,7 @@ $expirations = config()['expirations'];
           <?php foreach ($expirations as $key => $seconds): ?>
           <option value="<?= e($key) ?>" <?= $key === config()['default_expiration'] ? 'selected' : '' ?>><?= e(t('expire.' . $key)) ?></option>
           <?php endforeach; ?>
+          <option value="custom"><?= e(t('expire.custom')) ?></option>
         </select>
       </label>
       <label class="checkbox">
@@ -61,6 +62,12 @@ $expirations = config()['expirations'];
         <input type="password" id="password" autocomplete="new-password" placeholder="<?= e(t('create.password_placeholder')) ?>">
       </label>
     </div>
+
+    <!-- Revealed by the script when "custom" is picked. Hidden rather than
+         absent, so that the field needs no round trip to appear. -->
+    <label id="expire-at-field" class="hidden"><?= e(t('create.expire_at_label')) ?>
+      <input type="datetime-local" id="expire-at">
+    </label>
 
     <button type="submit" id="submit-btn"><?= e(t('create.submit')) ?></button>
     <p class="error hidden" id="create-error"></p>

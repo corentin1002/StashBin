@@ -14,7 +14,7 @@ Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une dif
 - **Création authentifiée** — comptes utilisateurs gérés en CLI ; sans compte, impossible de créer un secret. Désactivable d'une ligne (`'auth' => false`) pour une instance ouverte, quand l'accès est déjà restreint autrement.
 - **Lecture par lien** — la clé de déchiffrement voyage dans le fragment `#` de l'URL, jamais envoyé au serveur.
 - **Mot de passe optionnel** — mélangé à la clé lors de la dérivation (PBKDF2-SHA256, 310 000 itérations) ; sans lui, le lien seul ne suffit pas.
-- **Expiration** — de 1 heure à jamais, purge automatique.
+- **Expiration** — de 1 heure à jamais, ou une date et une heure précises, purge automatique.
 - **Destruction après lecture** — avec écran de confirmation avant de consommer le secret.
 - **Lien de suppression** — remis au créateur, utilisable uniquement par un utilisateur connecté.
 - **Interface multilingue** — français et anglais, choisis d'après la langue du navigateur ; ajouter une langue, c'est déposer un fichier dans `src/lang/`.
@@ -69,7 +69,7 @@ Le code est monté depuis le projet : toute modification est visible immédiatem
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 224 tests, quelques minutes
+./tests/run.sh          # 237 tests, quelques minutes
 ./tests/run.sh --help   # options : version, serveur, matrice complète…
 ```
 

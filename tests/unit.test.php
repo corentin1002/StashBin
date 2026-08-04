@@ -325,6 +325,40 @@ test('migrating a second time changes nothing', function () use ($legacy) {
 });
 
 // ---------------------------------------------------------------------------
+group('Chosen expiry — custom_expiry()');
+
+$now = 1_700_000_000;
+
+test('accepts an instant in the future', function () use ($now) {
+    assert_eq($now + 3600, custom_expiry($now + 3600, $now), 'timestamp returned as given');
+});
+
+test('accepts a numeric string, since JSON is not always typed', function () use ($now) {
+    assert_eq($now + 60, custom_expiry((string) ($now + 60), $now), 'digits accepted');
+});
+
+test('refuses an instant already past, and the present second', function () use ($now) {
+    // Not corrected, refused: a secret outliving what its author asked for is
+    // the one mistake here that cannot be undone.
+    assert_eq(null, custom_expiry($now - 1, $now), 'a second ago');
+    assert_eq(null, custom_expiry($now, $now), 'the very second');
+});
+
+test('refuses a mistyped year rather than storing it', function () use ($now) {
+    // The bound is the end of year 9999, which is what a date input can hold:
+    // a guard against a slip of the keyboard, not a policy — "never" is offered
+    // in the list above the field.
+    assert_eq(null, custom_expiry(253402300800, $now), 'past year 9999');
+    assert_true(custom_expiry(253402300799, $now) !== null, 'the bound itself is fine');
+});
+
+test('refuses anything that is not a whole number of seconds', function () use ($now) {
+    foreach ([null, true, 1.5, '12abc', '', [], '2026-08-05T18:30', $now . '.5'] as $bad) {
+        assert_eq(null, custom_expiry($bad, $now), 'rejected: ' . var_export($bad, true));
+    }
+});
+
+// ---------------------------------------------------------------------------
 group('Dates — utc_stamp()');
 
 test('renders a date in UTC, whatever the server thinks its timezone is', function () {

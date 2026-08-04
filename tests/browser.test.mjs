@@ -71,11 +71,12 @@ async function login(page) {
 }
 
 /** Fills the creation form and returns the two links produced. */
-async function createSecret(page, { text, password = '', expire = '1h', burn = false }) {
+async function createSecret(page, { text, password = '', expire = '1h', burn = false, at = null }) {
   await page.goto(`${BASE}/index.php`);
   await page.fill('#secret', text);
   if (password) await page.fill('#password', password);
   await page.selectOption('#expire', expire);
+  if (at) await page.fill('#expire-at', at);
   if (burn) await page.check('#burn');
   await page.click('#submit-btn');
   await page.waitForSelector('#result:not(.hidden)', { timeout: 20000 });
@@ -413,6 +414,66 @@ await test('the creator can delete their secret through the link provided', asyn
   await q.waitForSelector('#status:not(.hidden)', { timeout: 20000 });
   assertTrue((await q.textContent('#status')).includes('n’existe pas ou plus'), 'secret now not found');
   await q.close();
+});
+
+// ---------------------------------------------------------------------------
+group('Expiry chosen by the creator');
+
+/** "YYYY-MM-DDTHH:mm" in the browser's timezone, which is what the input takes. */
+function localValue(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+    + `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+await test('the date field appears only once "specific date" is picked', async () => {
+  await page.goto(`${BASE}/index.php`);
+  assertTrue(!(await page.isVisible('#expire-at')), 'hidden under the ordinary lifetimes');
+  await page.selectOption('#expire', 'custom');
+  assertTrue(await page.isVisible('#expire-at'), 'revealed on demand');
+  await page.selectOption('#expire', '1h');
+  assertTrue(!(await page.isVisible('#expire-at')), 'and folded away again');
+});
+
+await test('a secret expires at the instant its creator picked', async () => {
+  // The field speaks the visitor's timezone; what the list shows is UTC. Both
+  // must denote the same instant, which is what this checks.
+  const when = new Date(Date.now() + 3 * 3600 * 1000);
+  when.setSeconds(0, 0);
+  const { share } = await createSecret(page, {
+    text: 'à durée choisie', expire: 'custom', at: localValue(when),
+  });
+  assertEq('à durée choisie', await readSecret(context, share), 'readable in the meantime');
+
+  await page.goto(`${BASE}/secrets.php`);
+  const id = new URL(share).searchParams.get('id');
+  const facts = await page.locator('article.secret').filter({ hasText: id }).first().locator('.facts').textContent();
+  const expected = when.toISOString().slice(0, 16).replace('T', ' ');
+  assertTrue(facts.includes(expected), `the list shows ${expected} UTC (got: ${facts.trim()})`);
+});
+
+await test('a date already past never reaches the encryption', async () => {
+  // Two lines of defence, and both are exercised here: the input carries a
+  // "min", so the browser itself refuses to submit; and the script checks the
+  // instant before encrypting, for the browsers that render datetime-local as a
+  // plain text field and validate nothing.
+  await page.goto(`${BASE}/index.php`);
+  await page.fill('#secret', 'jamais chiffré');
+  await page.selectOption('#expire', 'custom');
+  const past = localValue(new Date(Date.now() - 86400000));
+  await page.evaluate((v) => { document.getElementById('expire-at').value = v; }, past);
+
+  await page.click('#submit-btn');
+  await page.waitForTimeout(500);
+  assertTrue(!(await page.isVisible('#result')), 'the browser refuses the form outright');
+
+  // Same submission, with native validation out of the way.
+  await page.evaluate(() => { document.getElementById('create-form').noValidate = true; });
+  await page.click('#submit-btn');
+  await page.waitForSelector('#create-error:not(.hidden)', { timeout: 20000 });
+  const error = await page.textContent('#create-error');
+  assertTrue(error.includes('à venir'), `the visitor is told what to fix (got: ${error})`);
+  assertTrue(!(await page.isVisible('#result')), 'and still nothing was created');
 });
 
 // ---------------------------------------------------------------------------
