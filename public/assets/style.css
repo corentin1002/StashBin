@@ -136,6 +136,76 @@ pre {
 
 .hidden { display: none; }
 
+/* --- The creator's inventory ---------------------------------------------- */
+
+.secret {
+  margin-top: 1.25rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+/* A secret that is no longer readable stays in the list, and reads as settled
+   rather than as one more live entry. */
+.secret.gone { background: var(--bg); }
+
+.secret h2 { margin: 0; font-size: 1.05rem; overflow-wrap: anywhere; }
+.secret form { margin: 0; }
+.secret button { margin-top: 0.9rem; }
+
+.badges { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0 0; }
+
+.badge {
+  padding: 0.15rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.badge.state { color: var(--accent); border-color: var(--accent); }
+.secret.gone .badge.state { color: var(--muted); border-color: var(--border); }
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 1.1rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9rem;
+}
+
+.facts code { font-family: ui-monospace, monospace; }
+
+details { margin-top: 0.8rem; }
+summary { cursor: pointer; font-size: 0.9rem; color: var(--accent); }
+summary + p { margin: 0.5rem 0 0; }
+
+/* The access log is the one table here, and a phone screen is narrower than
+   its four columns: it scrolls inside its own box rather than widening the
+   page. */
+.scroller { overflow-x: auto; margin-top: 0.6rem; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+
+th, td {
+  padding: 0.4rem 0.7rem 0.4rem 0;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+th { color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: none; }
+td.stamp { font-family: ui-monospace, monospace; }
+td.agent { min-width: 16rem; white-space: normal; color: var(--muted); }
+
+button.quiet { color: var(--accent); background: none; border: 1px solid var(--border); }
+@media (hover: hover) {
+  button.quiet:hover { background: var(--bg); }
+}
+
 /* Below its max-width the card spans the whole screen: the horizontal "auto"
    margin collapses to zero and 2rem of padding on each side eats a fifth of a
    360px screen. */
@@ -148,6 +218,9 @@ pre {
 @media (pointer: coarse), (max-width: 30rem) {
   button { min-height: 44px; }
   label.checkbox { min-height: 44px; }
+  /* Padding rather than a height: a flex summary loses its disclosure marker
+     on WebKit and Blink. */
+  summary { padding-block: 0.8rem; }
   .muted a {
     display: inline-flex;
     align-items: center;

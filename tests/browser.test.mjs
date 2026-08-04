@@ -71,9 +71,10 @@ async function login(page) {
 }
 
 /** Fills the creation form and returns the two links produced. */
-async function createSecret(page, { text, password = '', expire = '1h', burn = false }) {
+async function createSecret(page, { text, password = '', expire = '1h', burn = false, title = '' }) {
   await page.goto(`${BASE}/index.php`);
   await page.fill('#secret', text);
+  if (title) await page.fill('#title', title);
   if (password) await page.fill('#password', password);
   await page.selectOption('#expire', expire);
   if (burn) await page.check('#burn');
@@ -416,6 +417,107 @@ await test('the creator can delete their secret through the link provided', asyn
 });
 
 // ---------------------------------------------------------------------------
+group("The creator's inventory");
+
+await test('a secret created with a title appears in the list, never read', async () => {
+  const title = 'Accès au NAS — étage 2';
+  await page.goto(`${BASE}/index.php`);
+  await page.fill('#secret', 'contenu du NAS');
+  await page.fill('#title', title);
+  await page.click('#submit-btn');
+  await page.waitForSelector('#result:not(.hidden)', { timeout: 20000 });
+
+  await page.goto(`${BASE}/secrets.php`);
+  const entry = page.locator('article.secret').filter({ hasText: title }).first();
+  assertEq(title, (await entry.locator('h2').textContent()).trim(), 'title shown as typed');
+  assertTrue((await entry.locator('.badge.state').textContent()).includes('Jamais consulté'), 'never read yet');
+  // Newest first: the entry just created heads the list, whatever else was
+  // created in the same second.
+  assertEq(title, (await page.locator('article.secret h2').first().textContent()).trim(), 'newest first');
+});
+
+await test('reading the secret turns the entry into "read once"', async () => {
+  const title = 'Lu une fois';
+  const { share } = await createSecret(page, { text: 'à lire', title });
+  await readSecret(context, share);
+
+  await page.goto(`${BASE}/secrets.php`);
+  const entry = page.locator('article.secret').filter({ hasText: title }).first();
+  assertTrue((await entry.locator('.badge.state').textContent()).includes('Consulté une fois'), 'one read counted');
+});
+
+await test('the access log names the browser that came for the secret', async () => {
+  const title = 'Journal des accès';
+  const { share } = await createSecret(page, { text: 'à tracer', title });
+  await readSecret(context, share);
+
+  await page.goto(`${BASE}/secrets.php`);
+  const entry = page.locator('article.secret').filter({ hasText: title }).first();
+  await entry.locator('summary').click();
+  const log = await entry.locator('table').textContent();
+  assertTrue(log.includes('Secret remis'), 'the access is listed');
+  assertTrue(log.includes('HeadlessChrome') || log.includes('Chrome'), `the browser is named (got: ${log})`);
+});
+
+await test('deleting from the list makes the link stop working', async () => {
+  const title = 'Supprimé depuis la liste';
+  const { share } = await createSecret(page, { text: 'à supprimer', title });
+
+  await page.goto(`${BASE}/secrets.php`);
+  const entry = page.locator('article.secret').filter({ hasText: title }).first();
+  await entry.locator('button').click();
+  await page.waitForURL('**/secrets.php?done=deleted');
+
+  const after = page.locator('article.secret').filter({ hasText: title }).first();
+  assertTrue((await after.locator('.badge.state').textContent()).includes('Supprimé'), 'entry reads as deleted');
+
+  const reader = await context.newPage();
+  await reader.goto(share);
+  await reader.waitForFunction(
+    () => !document.getElementById('status').textContent.includes('Chargement'),
+    null,
+    { timeout: 20000 },
+  );
+  assertTrue((await reader.textContent('#status')).includes('n’existe pas ou plus'), 'the reader gets nothing');
+  await reader.close();
+});
+
+await test('a burned secret is reported as destroyed, and the replay is logged', async () => {
+  const title = 'Détruit à la lecture';
+  const { share } = await createSecret(page, { text: 'usage unique', title, burn: true });
+  await readSecret(context, share, { confirmBurn: true });
+
+  // Coming back to a spent link is exactly what a chat application's link
+  // preview does to a single-use secret.
+  const late = await context.newPage();
+  await late.goto(share);
+  await late.waitForFunction(
+    () => !document.getElementById('status').textContent.includes('Chargement'),
+    null,
+    { timeout: 20000 },
+  );
+  await late.close();
+
+  await page.goto(`${BASE}/secrets.php`);
+  const entry = page.locator('article.secret').filter({ hasText: title }).first();
+  assertTrue((await entry.locator('.badge.state').textContent()).includes('Détruit après lecture'), 'reported as burned');
+  await entry.locator('summary').click();
+  const log = await entry.locator('table').textContent();
+  assertTrue(log.includes('Lien rejoué'), 'the replay is in the log');
+});
+
+await test('an entry can be removed from the history once the secret is gone', async () => {
+  const title = 'Retiré de l’historique';
+  const { share } = await createSecret(page, { text: 'éphémère', title, burn: true });
+  await readSecret(context, share, { confirmBurn: true });
+
+  await page.goto(`${BASE}/secrets.php`);
+  await page.locator('article.secret').filter({ hasText: title }).first().locator('button').click();
+  await page.waitForURL('**/secrets.php?done=forgotten');
+  assertEq(0, await page.locator('article.secret').filter({ hasText: title }).count(), 'entry gone from the list');
+});
+
+// ---------------------------------------------------------------------------
 group('Interface language');
 
 // Fresh contexts: the one used by the previous tests carries an open session,
@@ -532,7 +634,7 @@ function tinyFields(p) {
 
 /** Visible tap targets shorter than 44px. */
 function tinyTargets(p) {
-  return p.evaluate(() => [...document.querySelectorAll('button, a, label.checkbox')]
+  return p.evaluate(() => [...document.querySelectorAll('button, a, label.checkbox, summary')]
     .filter((el) => {
       const h = el.getBoundingClientRect().height;
       return h > 0 && h < 44;
@@ -562,11 +664,18 @@ const asked = await phone.newPage();
 await asked.goto(guarded.share);
 await asked.waitForSelector('#password-prompt:not(.hidden)', { timeout: 20000 });
 
+// The inventory, with its access log unfolded: that table is the widest thing
+// the interface has to fit on a phone.
+const inventory = await phone.newPage();
+await inventory.goto(`${BASE}/secrets.php`);
+await inventory.evaluate(() => document.querySelectorAll('details').forEach((d) => (d.open = true)));
+
 const phonePages = [
   ['login.php', signin],
   ['index.php', author],
   ['view.php', reader],
   ['view.php (password)', asked],
+  ['secrets.php', inventory],
 ];
 
 await test('every page fits a 360px screen without touching its edges', async () => {

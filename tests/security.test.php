@@ -177,6 +177,104 @@ test('account passwords are hashed with a recognised algorithm', function () {
 });
 
 // ---------------------------------------------------------------------------
+group('The inventory belongs to its owner alone');
+
+// A second account, to make sure that the list is partitioned rather than
+// merely filtered on screen.
+$intruderName = 'intrus-inventaire';
+$intruderPass = 'motdepasseintrus';
+db()->prepare('DELETE FROM users WHERE username = ?')->execute([$intruderName]);
+db()->prepare('INSERT INTO users (username, pass_hash, created) VALUES (?, ?, ?)')
+    ->execute([$intruderName, password_hash($intruderPass, PASSWORD_DEFAULT), time()]);
+
+$intruder = new Http($base);
+$intruder->login($intruderName, $intruderPass);
+
+test('the inventory demands a session', function () use ($base) {
+    $anon = new Http($base);
+    $res = $anon->get('/secrets.php');
+    assert_eq(302, $res->status, 'anonymous visitor turned away');
+    assert_contains('login.php', (string) $res->header('Location'), 'sent to sign in');
+});
+
+test('a signed-in user sees their own secrets and nobody else\'s', function () use ($http, $token, $intruder) {
+    $mine = $http->createSecret(['title' => 'Titre du propriétaire'], $token)->json()['id'];
+
+    $ownerPage = $http->get('/secrets.php')->body;
+    assert_contains($mine, $ownerPage, 'the owner finds their secret');
+    assert_contains('Titre du propri', $ownerPage, 'and its title');
+
+    $intruderPage = $intruder->get('/secrets.php')->body;
+    assert_not_contains($mine, $intruderPage, 'somebody else sees neither the identifier');
+    assert_not_contains('Titre du propri', $intruderPage, 'nor the title');
+});
+
+test('a signed-in user cannot delete a secret that is not theirs', function () use ($http, $token, $intruder) {
+    // Deleting from the list is the owner's right; the deletion token is the
+    // token holder's. Holding neither grants nothing.
+    $id = $http->createSecret([], $token)->json()['id'];
+
+    $page = $intruder->get('/secrets.php')->body;
+    preg_match('/name="csrf" value="([^"]+)"/', $page, $m);
+    $intruder->post('/secrets.php', ['csrf' => $m[1] ?? '', 'id' => $id, 'action' => 'delete']);
+
+    assert_eq(200, $http->get('/api.php?id=' . $id)->status, 'the secret is still readable');
+    $gone = db()->query('SELECT gone FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
+    assert_eq(null, $gone, 'and still considered live');
+});
+
+test('a signed-in user cannot erase somebody else\'s history', function () use ($http, $token, $intruder) {
+    $id = $http->createSecret([], $token)->json()['id'];
+    db()->prepare("UPDATE pastes SET gone = ?, gone_cause = 'deleted' WHERE id = ?")->execute([time(), $id]);
+
+    $page = $intruder->get('/secrets.php')->body;
+    preg_match('/name="csrf" value="([^"]+)"/', $page, $m);
+    $intruder->post('/secrets.php', ['csrf' => $m[1] ?? '', 'id' => $id, 'action' => 'forget']);
+
+    $left = db()->query('SELECT COUNT(*) FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
+    assert_eq(1, (int) $left, 'the entry stays in its owner\'s history');
+});
+
+test('the inventory refuses a write without a CSRF token', function () use ($http, $token) {
+    // The session cookie is SameSite=Lax, so another site can drive a POST at
+    // top level: the token is what stops it.
+    $id = $http->createSecret([], $token)->json()['id'];
+    $http->post('/secrets.php', ['id' => $id, 'action' => 'delete']);
+    $gone = db()->query('SELECT gone FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
+    assert_eq(null, $gone, 'nothing deleted without the token');
+});
+
+test('the reader is never told the title', function () use ($http, $token, $base) {
+    // The title is in the clear for its owner's list, and for nothing else: the
+    // API of a reader who holds the link must not mention it.
+    $id = $http->createSecret(['title' => 'ETIQUETTEQUINEDOITPASFUIR'], $token)->json()['id'];
+    $anon = new Http($base);
+    $res = $anon->get('/api.php?id=' . $id);
+    assert_eq(200, $res->status, 'secret readable');
+    assert_not_contains('ETIQUETTEQUINEDOITPASFUIR', $res->body, 'title absent from the response');
+    assert_true(!isset($res->json()['title']), 'no title field at all');
+});
+
+test('a title carrying a script is displayed escaped', function () use ($http, $token) {
+    // It is text the server stores in the clear and gives back on a page: the
+    // one place where a creator could attack their own browser, or another
+    // reader of the same page.
+    $http->createSecret(['title' => '<img src=x onerror=alert(1)>'], $token);
+    $page = $http->get('/secrets.php')->body;
+    assert_not_contains('<img src=x', $page, 'tag not interpreted');
+    assert_contains('&lt;img src=x', $page, 'displayed escaped');
+});
+
+test('the access log records the address the server saw, not the one claimed', function () use ($http, $token) {
+    // X-Forwarded-For is written by whoever sends the request: trusting it
+    // would let a reader dictate what the log says about them.
+    $id = $http->createSecret([], $token)->json()['id'];
+    $http->request('GET', '/api.php?id=' . $id, null, ['X-Forwarded-For' => '203.0.113.66']);
+    $ip = db()->query('SELECT ip FROM paste_reads WHERE paste_id = ' . db()->quote($id))->fetchColumn();
+    assert_true($ip !== '203.0.113.66', 'the claimed address is not what gets recorded');
+});
+
+// ---------------------------------------------------------------------------
 group('Injection');
 
 test('an identifier containing SQL does not disturb the query', function () use ($http) {

@@ -270,7 +270,7 @@ final class Http
             : $overrides['payload'];
 
         $body = ['payload' => $payload];
-        foreach (['expire', 'burn'] as $k) {
+        foreach (['expire', 'burn', 'title'] as $k) {
             if (array_key_exists($k, $overrides)) {
                 $body[$k] = $overrides[$k];
             }

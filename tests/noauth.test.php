@@ -103,6 +103,45 @@ test('a wrong token is still refused (403) and the secret survives', function ()
 });
 
 // ---------------------------------------------------------------------------
+group('No inventory without accounts');
+
+test('secrets.php redirects to the creation page', function () use ($base) {
+    // No account, no owner, no list: the page has nothing to show and says so
+    // by not existing, rather than by displaying an empty one.
+    $res = (new Http($base))->get('/secrets.php');
+    assert_eq(302, $res->status, 'redirect');
+    assert_contains('index.php', (string) $res->header('Location'), 'sent to creation');
+});
+
+test('the creation page offers no title field', function () use ($base) {
+    $page = (new Http($base))->get('/index.php')->body;
+    assert_not_contains('id="title"', $page, 'no field for a title nobody could read back');
+});
+
+test('a title sent anyway is not stored', function () use ($http, $token) {
+    // The field is gone from the page, but the API is reachable directly: what
+    // would only end up as an unreadable string in the clear is dropped.
+    $id = $http->createSecret(['title' => 'ETIQUETTESANSCOMPTE'], $token)->json()['id'];
+    $stored = db()->query('SELECT title FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
+    assert_eq(null, $stored, 'nothing kept in the clear for want of a list');
+});
+
+test('secrets are created without an owner', function () use ($http, $token) {
+    $id = $http->createSecret([], $token)->json()['id'];
+    $owner = db()->query('SELECT owner_id FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
+    assert_eq(null, $owner, 'no owner invented');
+});
+
+test('nothing is logged about the readers', function () use ($http, $token) {
+    // The access log exists for the creator's list. Without a list, recording
+    // reader addresses would be collecting for nobody.
+    $id = $http->createSecret([], $token)->json()['id'];
+    $http->get('/api.php?id=' . $id);
+    $logged = db()->query('SELECT COUNT(*) FROM paste_reads WHERE paste_id = ' . db()->quote($id))->fetchColumn();
+    assert_eq(0, (int) $logged, 'no access recorded');
+});
+
+// ---------------------------------------------------------------------------
 group('What opening up does not change');
 
 test('the configuration reports authentication as disabled', function () {
@@ -136,6 +175,9 @@ test('read-once secrets still disappear after reading', function () use ($http, 
     $id = $http->createSecret(['burn' => true], $token)->json()['id'];
     assert_eq(200, $http->get('/api.php?id=' . $id)->status, 'first read served');
     assert_eq(404, $http->get('/api.php?id=' . $id)->status, 'second read impossible');
+    // And they leave nothing behind: a headstone is only of use to an owner.
+    $left = db()->query('SELECT COUNT(*) FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
+    assert_eq(0, (int) $left, 'row gone for good');
 });
 
 test('the hardening headers are still set', function () use ($base) {

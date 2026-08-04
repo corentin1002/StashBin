@@ -54,29 +54,128 @@ function db(): PDO
         ]);
         $pdo->exec('PRAGMA journal_mode = WAL');
         $pdo->exec('PRAGMA foreign_keys = ON');
-        $pdo->exec('CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL UNIQUE,
-            pass_hash TEXT NOT NULL,
-            created INTEGER NOT NULL
-        )');
-        $pdo->exec('CREATE TABLE IF NOT EXISTS pastes (
-            id TEXT PRIMARY KEY,
-            payload TEXT NOT NULL,
-            burn INTEGER NOT NULL DEFAULT 0,
-            delete_hash TEXT NOT NULL,
-            created INTEGER NOT NULL,
-            expires INTEGER
-        )');
+        migrate_schema($pdo);
     }
     return $pdo;
 }
 
-// Deletes expired pastes (called on every creation; traffic is low).
+// Creates what is missing, on an empty database as well as on one that predates
+// the creator's inventory. There is no migration table: SQLite describes its own
+// schema, which is a more reliable answer to "which version is this" than a
+// number we would have to remember to bump.
+function migrate_schema(PDO $pdo): void
+{
+    $pdo->exec('CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        pass_hash TEXT NOT NULL,
+        created INTEGER NOT NULL
+    )');
+    // A secret whose owner's account is deleted keeps working: the links handed
+    // out are still valid, they simply stop appearing in anyone's list.
+    $pdo->exec('CREATE TABLE IF NOT EXISTS pastes (
+        id TEXT PRIMARY KEY,
+        payload TEXT NOT NULL,
+        burn INTEGER NOT NULL DEFAULT 0,
+        delete_hash TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        expires INTEGER,
+        owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        title TEXT,
+        gone INTEGER,
+        gone_cause TEXT
+    )');
+    // One row per access to a secret's payload. Deleting the secret for good
+    // takes its log with it.
+    $pdo->exec('CREATE TABLE IF NOT EXISTS paste_reads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        paste_id TEXT NOT NULL REFERENCES pastes(id) ON DELETE CASCADE,
+        at INTEGER NOT NULL,
+        outcome TEXT NOT NULL,
+        ip TEXT,
+        agent TEXT
+    )');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS paste_reads_by_paste ON paste_reads (paste_id, at)');
+
+    // Columns added after the first version. SQLite only allows ADD COLUMN with
+    // a NULL default when a REFERENCES clause is involved, which is what these
+    // all are.
+    $existing = array_column($pdo->query('PRAGMA table_info(pastes)')->fetchAll(), 'name');
+    $added = [
+        'owner_id'   => 'INTEGER REFERENCES users(id) ON DELETE SET NULL',
+        'title'      => 'TEXT',
+        'gone'       => 'INTEGER',
+        'gone_cause' => 'TEXT',
+    ];
+    foreach ($added as $column => $definition) {
+        if (!in_array($column, $existing, true)) {
+            $pdo->exec("ALTER TABLE pastes ADD COLUMN $column $definition");
+        }
+    }
+}
+
+// Wipes the ciphertext but keeps the row, so that the creator's list can still
+// say what became of the secret and when. A secret nobody owns has no list to
+// appear in: it goes for good, and its access log with it.
+//
+// Idempotent: a secret already at rest keeps the cause that put it there.
+function entomb(string $id, string $cause): void
+{
+    db()->prepare(
+        "UPDATE pastes SET payload = '', gone = ?, gone_cause = ?
+         WHERE id = ? AND gone IS NULL AND owner_id IS NOT NULL"
+    )->execute([time(), $cause, $id]);
+    db()->prepare('DELETE FROM pastes WHERE id = ? AND owner_id IS NULL')->execute([$id]);
+}
+
+// Retires expired secrets (called on every creation; traffic is low). They stop
+// being readable the moment they expire, wherever they are read from: this only
+// decides what is left behind.
 function purge_expired(): void
 {
-    $stmt = db()->prepare('DELETE FROM pastes WHERE expires IS NOT NULL AND expires < ?');
-    $stmt->execute([time()]);
+    $now = time();
+    db()->prepare(
+        "UPDATE pastes SET payload = '', gone = ?, gone_cause = 'expired'
+         WHERE expires IS NOT NULL AND expires < ? AND gone IS NULL AND owner_id IS NOT NULL"
+    )->execute([$now, $now]);
+    db()->prepare(
+        'DELETE FROM pastes WHERE expires IS NOT NULL AND expires < ? AND owner_id IS NULL'
+    )->execute([$now]);
+}
+
+// Records an access to a secret's payload: served, or already gone — a replayed
+// link is precisely what the creator wants to know about. The probe that
+// precedes a burn-after-reading confirmation is not an access and is not
+// recorded.
+//
+// Nothing is written for a secret without an owner: nobody would ever read it.
+// The INSERT ... SELECT makes that condition part of the write itself, so a
+// vanished row cannot leave a dangling log entry behind.
+function record_read(string $id, string $outcome): void
+{
+    db()->prepare(
+        'INSERT INTO paste_reads (paste_id, at, outcome, ip, agent)
+         SELECT id, ?, ?, ?, ? FROM pastes WHERE id = ? AND owner_id IS NOT NULL'
+    )->execute([time(), $outcome, client_ip(), client_agent(), $id]);
+}
+
+// The reader's address, as the web server saw it. Deliberately not read from
+// X-Forwarded-For: that header is written by whoever sends the request, so
+// trusting it would let any reader dictate what the log says about them. Behind
+// a proxy, it is the proxy's job to set REMOTE_ADDR (mod_remoteip, realip).
+function client_ip(): ?string
+{
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    return $ip === '' ? null : $ip;
+}
+
+// The browser the reader declares. Kept because it is often the explanation for
+// a burn-after-reading secret consumed before its recipient got to it: a chat
+// application preloading the link.
+function client_agent(): ?string
+{
+    $agent = trim((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
+    return $agent === '' ? null : mb_substr($agent, 0, 200);
 }
 
 function start_session(): void
@@ -174,6 +273,14 @@ function json_error(int $status, string $code): never
 function e(string $s): string
 {
     return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+}
+
+// Dates are shown in UTC, and say so. The server's timezone is nobody's in
+// particular, and a reader's access is worth timing against a fixed reference
+// rather than against wherever the machine happens to think it is.
+function utc_stamp(?int $stamp): string
+{
+    return $stamp === null ? t('secrets.unknown') : gmdate('Y-m-d H:i', $stamp);
 }
 
 // ---------------------------------------------------------------------------

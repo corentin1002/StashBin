@@ -28,6 +28,11 @@ return [
     // Maximum size of the encrypted payload accepted (in bytes).
     'max_size' => 2 * 1024 * 1024,
 
+    // Maximum length of the title a creator may give a secret (in characters).
+    // That title is the only part of a secret the server can read: it is there
+    // to tell entries apart in one's own list, not to hold anything.
+    'title_max' => 120,
+
     // Lifetimes on offer (key => seconds, null = unlimited).
     'expirations' => [
         '1h'    => 3600,

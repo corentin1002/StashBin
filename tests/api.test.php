@@ -172,12 +172,15 @@ test('reading requires no session', function () use ($http, $token, $base) {
     assert_eq(200, $anon->get('/api.php?id=' . $id)->status, 'public reading');
 });
 
-test('an expired secret returns 404 and disappears from the database', function () use ($http, $token) {
+test('an expired secret returns 404 and its ciphertext is wiped on the spot', function () use ($http, $token) {
+    // The row itself stays: it belongs to an account, whose list has to be able
+    // to say the secret expired rather than let it vanish without a word.
     $id = $http->createSecret(['expire' => '1h'], $token)->json()['id'];
     db()->prepare('UPDATE pastes SET expires = ? WHERE id = ?')->execute([time() - 1, $id]);
     assert_eq(404, $http->get('/api.php?id=' . $id)->status, 'expired secret unreachable');
-    $left = db()->query('SELECT COUNT(*) FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
-    assert_eq(0, (int) $left, 'row deleted on the fly');
+    $row = db()->query('SELECT payload, gone_cause FROM pastes WHERE id = ' . db()->quote($id))->fetch();
+    assert_eq('', $row['payload'], 'ciphertext wiped without waiting for the next purge');
+    assert_eq('expired', $row['gone_cause'], 'cause recorded');
 });
 
 test('creating a secret purges the remaining expired ones', function () use ($http, $token) {
@@ -240,6 +243,136 @@ test('an anonymous visitor holding the right token is sent to the sign-in page',
     assert_eq(302, $res->status, 'redirect to login.php');
     assert_contains('login.php', (string) $res->header('Location'), 'redirect target');
     assert_eq(200, $http->get('/api.php?id=' . $d['id'])->status, 'secret not deleted by the anonymous visitor');
+});
+
+// ---------------------------------------------------------------------------
+group('Title, ownership and access log');
+
+test('a secret belongs to whoever created it', function () use ($http, $token, $user) {
+    $id = $http->createSecret([], $token)->json()['id'];
+    $owner = db()->query('SELECT username FROM users u JOIN pastes p ON p.owner_id = u.id
+                          WHERE p.id = ' . db()->quote($id))->fetchColumn();
+    assert_eq($user, $owner, 'creator recorded');
+});
+
+test('the title is stored in the clear, as sent', function () use ($http, $token) {
+    // It is the one part of a secret the server can read, and deliberately so:
+    // without it, a list of identifiers would be useless to its owner.
+    $id = $http->createSecret(['title' => 'Accès Postgres — prod'], $token)->json()['id'];
+    $stored = db()->query('SELECT title FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
+    assert_eq('Accès Postgres — prod', $stored, 'title stored verbatim');
+});
+
+test('a secret with no title stores nothing rather than an empty string', function () use ($http, $token) {
+    $id = $http->createSecret([], $token)->json()['id'];
+    $stored = db()->query('SELECT title FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
+    assert_eq(null, $stored, 'no title, no value');
+});
+
+test('an oversized title is refused (400) and nothing is created', function () use ($http, $token) {
+    $before = (int) db()->query('SELECT COUNT(*) FROM pastes')->fetchColumn();
+    $res = $http->createSecret(['title' => str_repeat('é', config()['title_max'] + 1)], $token);
+    assert_eq(400, $res->status, 'title over the limit rejected');
+    assert_eq('title_too_long', $res->json()['code'], 'stable code');
+    $after = (int) db()->query('SELECT COUNT(*) FROM pastes')->fetchColumn();
+    assert_eq($before, $after, 'refusal creates nothing');
+});
+
+test('a title of exactly the maximum length is accepted', function () use ($http, $token) {
+    // The limit counts characters, not bytes: an accented title of the right
+    // length must not be refused for weighing more.
+    $title = str_repeat('é', config()['title_max']);
+    $res = $http->createSecret(['title' => $title], $token);
+    assert_eq(201, $res->status, 'the bound itself is allowed');
+    $stored = db()->query('SELECT title FROM pastes WHERE id = ' . db()->quote($res->json()['id']))->fetchColumn();
+    assert_eq($title, $stored, 'stored whole');
+});
+
+test('reading a secret records the date, the address and the browser', function () use ($http, $token) {
+    $id = $http->createSecret([], $token)->json()['id'];
+    $http->request('GET', '/api.php?id=' . $id, null, ['User-Agent' => 'SuiteDeTests/1.0']);
+
+    $log = db()->query('SELECT * FROM paste_reads WHERE paste_id = ' . db()->quote($id))->fetchAll();
+    assert_eq(1, count($log), 'one access recorded');
+    assert_eq('served', $log[0]['outcome'], 'payload served');
+    assert_eq('SuiteDeTests/1.0', $log[0]['agent'], 'browser recorded');
+    assert_true($log[0]['ip'] !== null && $log[0]['ip'] !== '', 'address recorded');
+    assert_true(abs($log[0]['at'] - time()) < 60, 'date recorded');
+});
+
+test('the "meta" probe on a live secret is not an access and is not recorded', function () use ($http, $token) {
+    // It precedes the burn-after-reading confirmation: counting it would report
+    // a read to the creator for a secret nobody has seen.
+    $id = $http->createSecret(['burn' => true], $token)->json()['id'];
+    $http->get('/api.php?id=' . $id . '&meta=1');
+    $count = db()->query('SELECT COUNT(*) FROM paste_reads WHERE paste_id = ' . db()->quote($id))->fetchColumn();
+    assert_eq(0, (int) $count, 'probe left no trace');
+});
+
+test('the same probe on a spent secret is recorded, being all the reader gets to send', function () use ($http, $token) {
+    // view.php probes before anything else: a reader arriving after the secret
+    // is gone never reaches the payload request. Ignoring the probe here would
+    // make late arrivals invisible — which is the very thing the log is for.
+    $id = $http->createSecret(['burn' => true], $token)->json()['id'];
+    $http->get('/api.php?id=' . $id);
+    $http->request('GET', '/api.php?id=' . $id . '&meta=1', null, ['User-Agent' => 'ApercuDeLien/1.0']);
+
+    $log = db()->query('SELECT outcome, agent FROM paste_reads WHERE paste_id = ' . db()->quote($id)
+                       . ' ORDER BY at, id')->fetchAll();
+    assert_eq(2, count($log), 'the read and the late probe');
+    assert_eq('gone', $log[1]['outcome'], 'recorded as a link found empty');
+    assert_eq('ApercuDeLien/1.0', $log[1]['agent'], 'and attributed');
+});
+
+test('replaying the link of a spent secret is recorded as such', function () use ($http, $token) {
+    // This is how a creator finds out that a chat application preloaded their
+    // link, or that somebody came back to it too late.
+    $id = $http->createSecret(['burn' => true], $token)->json()['id'];
+    $http->get('/api.php?id=' . $id);
+    $http->request('GET', '/api.php?id=' . $id, null, ['User-Agent' => 'TropTard/1.0']);
+
+    $log = db()->query('SELECT outcome, agent FROM paste_reads WHERE paste_id = ' . db()->quote($id)
+                       . ' ORDER BY at, id')->fetchAll();
+    assert_eq(2, count($log), 'both attempts recorded');
+    assert_eq('served', $log[0]['outcome'], 'the first was served');
+    assert_eq('gone', $log[1]['outcome'], 'the second found nothing');
+    assert_eq('TropTard/1.0', $log[1]['agent'], 'and we know what asked for it');
+});
+
+test('a burned secret leaves a headstone, not a hole', function () use ($http, $token) {
+    $id = $http->createSecret(['burn' => true], $token)->json()['id'];
+    $http->get('/api.php?id=' . $id);
+    $row = db()->query('SELECT payload, gone, gone_cause FROM pastes WHERE id = ' . db()->quote($id))->fetch();
+    assert_true($row !== false, 'the row survives its secret');
+    assert_eq('', $row['payload'], 'ciphertext wiped');
+    assert_eq('burned', $row['gone_cause'], 'destroyed by reading');
+    assert_true(is_int($row['gone']), 'date of disappearance recorded');
+});
+
+test('deleting through the link leaves a headstone saying so', function () use ($http, $token) {
+    $d = $http->createSecret([], $token)->json();
+    $http->get('/api.php?id=' . $d['id'] . '&delete=' . $d['delete_token']);
+    $row = db()->query('SELECT payload, gone_cause FROM pastes WHERE id = ' . db()->quote($d['id']))->fetch();
+    assert_eq('', $row['payload'], 'ciphertext wiped');
+    assert_eq('deleted', $row['gone_cause'], 'deleted, as opposed to read or expired');
+});
+
+test('a secret nobody owns is deleted outright, log and all', function () use ($http) {
+    // Nothing would ever show it: keeping a headstone for an ownerless secret
+    // would grow the table for no reader.
+    db()->prepare('INSERT INTO pastes (id, payload, burn, delete_hash, created, expires) VALUES (?,?,?,?,?,?)')
+        ->execute(['sansproprietaire0', '{"ct":"X"}', 1, 'h', time(), null]);
+    assert_eq(200, $http->get('/api.php?id=sansproprietaire0')->status, 'read once');
+    $left = db()->query("SELECT COUNT(*) FROM pastes WHERE id='sansproprietaire0'")->fetchColumn();
+    assert_eq(0, (int) $left, 'row gone for good');
+    $logged = db()->query("SELECT COUNT(*) FROM paste_reads WHERE paste_id='sansproprietaire0'")->fetchColumn();
+    assert_eq(0, (int) $logged, 'nothing logged for a secret nobody can look at');
+});
+
+test('an identifier that never existed leaves no trace', function () use ($http) {
+    $http->get('/api.php?id=' . str_repeat('q', 20));
+    $logged = db()->query("SELECT COUNT(*) FROM paste_reads WHERE paste_id='" . str_repeat('q', 20) . "'")->fetchColumn();
+    assert_eq(0, (int) $logged, 'no log line for a secret that never was');
 });
 
 // ---------------------------------------------------------------------------

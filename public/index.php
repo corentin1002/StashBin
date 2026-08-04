@@ -29,6 +29,7 @@ $expirations = config()['expirations'];
     <?php if ($user !== null): ?>
     <p class="muted"><?= t_html('create.logged_in', [
         '{user}' => '<strong>' . e($user['username']) . '</strong>',
+        '{secrets}' => '<a href="secrets.php' . e(lang_param()) . '">' . e(t('create.my_secrets')) . '</a>',
         '{logout}' => '<a href="logout.php' . e(lang_param()) . '">' . e(t('create.logout')) . '</a>',
     ]) ?></p>
     <?php else: ?>
@@ -40,6 +41,14 @@ $expirations = config()['expirations'];
     <label><?= e(t('create.secret_label')) ?>
       <textarea id="secret" rows="10" required placeholder="<?= e(t('create.secret_placeholder')) ?>"></textarea>
     </label>
+
+    <?php if ($user !== null): ?>
+    <label><?= e(t('create.title_label')) ?>
+      <input type="text" id="title" maxlength="<?= (int) config()['title_max'] ?>"
+             placeholder="<?= e(t('create.title_placeholder')) ?>">
+    </label>
+    <p class="muted"><?= e(t('create.title_notice')) ?></p>
+    <?php endif; ?>
 
     <div class="options">
       <label><?= e(t('create.expire_label')) ?>

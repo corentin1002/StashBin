@@ -162,9 +162,19 @@ test('creates the expected schema', function () {
 
 test('the pastes table carries the expected columns', function () {
     $cols = array_column(db()->query('PRAGMA table_info(pastes)')->fetchAll(), 'name');
-    foreach (['id', 'payload', 'burn', 'delete_hash', 'created', 'expires'] as $col) {
+    $expected = ['id', 'payload', 'burn', 'delete_hash', 'created', 'expires', 'owner_id', 'title', 'gone', 'gone_cause'];
+    foreach ($expected as $col) {
         assert_true(in_array($col, $cols, true), "\"$col\" column");
     }
+});
+
+test('the access log has its own table and index', function () {
+    $cols = array_column(db()->query('PRAGMA table_info(paste_reads)')->fetchAll(), 'name');
+    foreach (['paste_id', 'at', 'outcome', 'ip', 'agent'] as $col) {
+        assert_true(in_array($col, $cols, true), "\"$col\" column");
+    }
+    $indexes = db()->query("SELECT name FROM sqlite_master WHERE type='index'")->fetchAll(PDO::FETCH_COLUMN);
+    assert_true(in_array('paste_reads_by_paste', $indexes, true), 'log indexed by secret');
 });
 
 test('turns on the WAL journal and foreign keys', function () {
@@ -225,6 +235,110 @@ test('keeps a secret expiring on the very second', function () use ($seed, $exis
     $seed('purge-limite', time());
     purge_expired();
     assert_true($exists('purge-limite'), 'the bound is exclusive');
+});
+
+test('an owned secret leaves a headstone instead of a hole', function () use ($exists) {
+    // Its creator has a list to look at: the row stays so that it can say what
+    // became of the secret, stripped of the ciphertext.
+    db()->prepare('INSERT INTO users (username, pass_hash, created) VALUES (?, ?, ?)')
+        ->execute(['purge-owner', 'x', time()]);
+    $owner = (int) db()->lastInsertId();
+    db()->prepare('INSERT INTO pastes (id, payload, burn, delete_hash, created, expires, owner_id) VALUES (?,?,?,?,?,?,?)')
+        ->execute(['purge-possede', '{"ct":"SECRET"}', 0, 'hash', time() - 120, time() - 60, $owner]);
+
+    purge_expired();
+
+    assert_true($exists('purge-possede'), 'the row survives its expiry');
+    $row = db()->query("SELECT payload, gone, gone_cause FROM pastes WHERE id='purge-possede'")->fetch();
+    assert_eq('', $row['payload'], 'ciphertext wiped');
+    assert_eq('expired', $row['gone_cause'], 'cause recorded');
+    assert_true(is_int($row['gone']), 'date of disappearance recorded');
+});
+
+// ---------------------------------------------------------------------------
+group('Schema migration — migrate_schema()');
+
+// A database created before the inventory existed must gain what it lacks
+// without losing what it holds: these run against a temporary file carrying the
+// original schema, since the live database has already been migrated.
+$legacy = static function (): PDO {
+    $pdo = new PDO('sqlite::memory:', null, null, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    ]);
+    $pdo->exec('CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        pass_hash TEXT NOT NULL,
+        created INTEGER NOT NULL
+    )');
+    $pdo->exec('CREATE TABLE pastes (
+        id TEXT PRIMARY KEY,
+        payload TEXT NOT NULL,
+        burn INTEGER NOT NULL DEFAULT 0,
+        delete_hash TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        expires INTEGER
+    )');
+    return $pdo;
+};
+
+test('adds the missing columns to an older database', function () use ($legacy) {
+    $pdo = $legacy();
+    migrate_schema($pdo);
+    $cols = array_column($pdo->query('PRAGMA table_info(pastes)')->fetchAll(), 'name');
+    foreach (['owner_id', 'title', 'gone', 'gone_cause'] as $col) {
+        assert_true(in_array($col, $cols, true), "\"$col\" added");
+    }
+});
+
+test('creates the access log an older database never had', function () use ($legacy) {
+    $pdo = $legacy();
+    migrate_schema($pdo);
+    $tables = $pdo->query("SELECT name FROM sqlite_master WHERE type='table'")->fetchAll(PDO::FETCH_COLUMN);
+    assert_true(in_array('paste_reads', $tables, true), 'paste_reads created');
+});
+
+test('the secrets already stored survive the migration', function () use ($legacy) {
+    // The whole point: an instance in production migrates without losing the
+    // links its users have already handed out.
+    $pdo = $legacy();
+    $pdo->prepare('INSERT INTO pastes (id, payload, burn, delete_hash, created, expires) VALUES (?,?,?,?,?,?)')
+        ->execute(['vieux-secret', '{"ct":"INTACT"}', 1, 'empreinte', 1000, null]);
+
+    migrate_schema($pdo);
+
+    $row = $pdo->query("SELECT * FROM pastes WHERE id='vieux-secret'")->fetch();
+    assert_eq('{"ct":"INTACT"}', $row['payload'], 'payload untouched');
+    assert_eq(1, (int) $row['burn'], 'burn flag untouched');
+    assert_eq(null, $row['owner_id'], 'no owner invented for it');
+    assert_eq(null, $row['gone'], 'still considered live');
+});
+
+test('migrating a second time changes nothing', function () use ($legacy) {
+    // db() calls it on every request: it has to be harmless once it is done.
+    $pdo = $legacy();
+    migrate_schema($pdo);
+    $before = $pdo->query('PRAGMA table_info(pastes)')->fetchAll();
+    migrate_schema($pdo);
+    assert_eq($before, $pdo->query('PRAGMA table_info(pastes)')->fetchAll(), 'schema unchanged');
+});
+
+// ---------------------------------------------------------------------------
+group('Dates — utc_stamp()');
+
+test('renders a date in UTC, whatever the server thinks its timezone is', function () {
+    // The access log times a reader's visit: it is shown in UTC and says so,
+    // rather than in whatever zone the machine happens to be set to.
+    $previous = date_default_timezone_get();
+    date_default_timezone_set('Pacific/Kiritimati');
+    $rendered = utc_stamp(1_700_000_000);
+    date_default_timezone_set($previous);
+    assert_eq('2023-11-14 22:13', $rendered, 'UTC, minute precision');
+});
+
+test('renders a missing date as a dash rather than as 1970', function () {
+    assert_eq(t('secrets.unknown'), utc_stamp(null), 'no date invented');
 });
 
 // ---------------------------------------------------------------------------

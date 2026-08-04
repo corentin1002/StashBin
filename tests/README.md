@@ -21,15 +21,15 @@ The runner builds the image, starts a fresh instance, creates a test account, pl
 
 ## What is covered
 
-**188 tests** across five suites.
+**228 tests** across five suites.
 
 | Suite | Tests | Scope |
 |---|--:|---|
-| `unit.test.php` | 56 | Functions in `src/bootstrap.php` without going through HTTP: escaping, configuration and environment overrides, database schema, purging expired secrets, CSRF tokens, language negotiation and dictionaries |
-| `api.test.php` | 44 | Business rules over HTTP: authentication, CSRF, payload validation, lifetimes, burn after reading, deletion links, refused methods, error codes and the language of the response |
-| `security.test.php` | 28 | The guarantees the README makes: nothing outside `public/`, hardening headers, session and fixation, hashed storage, injection, and the fact that choosing a language opens nothing |
-| `noauth.test.php` | 19 | Open instance (`auth` set to false): creation without an account, CSRF still required, deletion by the token alone, and everything that does not move |
-| `browser.test.mjs` | 41 | Real Chromium: end-to-end cryptography, complete interface journeys, the interface served in the browser's language, and the layout on a phone-sized screen |
+| `unit.test.php` | 64 | Functions in `src/bootstrap.php` without going through HTTP: escaping, configuration and environment overrides, database schema and its migration, purging expired secrets, CSRF tokens, dates, language negotiation and dictionaries |
+| `api.test.php` | 57 | Business rules over HTTP: authentication, CSRF, payload validation, lifetimes, burn after reading, deletion links, ownership, titles, the access log and the headstones left behind, refused methods, error codes and the language of the response |
+| `security.test.php` | 36 | The guarantees the README makes: nothing outside `public/`, hardening headers, session and fixation, hashed storage, one creator's inventory kept out of another's reach, injection, and the fact that choosing a language opens nothing |
+| `noauth.test.php` | 24 | Open instance (`auth` set to false): creation without an account, CSRF still required, deletion by the token alone, no inventory and nothing recorded about readers, and everything that does not move |
+| `browser.test.mjs` | 47 | Real Chromium: end-to-end cryptography, complete interface journeys, the creator's inventory as they see it, the interface served in the browser's language, and the layout on a phone-sized screen |
 
 The PHP tests run **inside the application container**, under the `www-data` identity. They can therefore compare the HTTP response with what is actually written to the database — that is how we check that a deletion token really is stored hashed, or that a payload is never decrypted server-side.
 
