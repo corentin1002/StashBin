@@ -10,6 +10,7 @@ Ce sont les promesses du produit. Une modification qui en casse une est un bug, 
 - **La clé de déchiffrement vit dans le fragment `#` de l'URL**, qui n'est pas transmis au serveur. Ne la déplacez pas dans la partie interrogeable, ni dans un cookie, ni dans un en-tête.
 - **Créer exige un compte ; lire n'exige que le lien.** Supprimer exige une session ouverte **et**, soit le jeton remis au créateur, soit d'être le propriétaire du secret. Les deux titres sont distincts : l'un ne vaut jamais l'autre, et un inconnu connecté ne supprime rien qui ne soit à lui. Unique dérogation, et elle est explicite : `'auth' => false` dans `config.php` (ou `STASHBIN_AUTH=0`) ouvre création et suppression à tout visiteur. Le défaut livré est `true` et doit le rester ; tous les autres invariants tiennent quelle que soit la valeur.
 - **Le jeton de suppression est stocké haché** (SHA-256), jamais en clair.
+- **Un secret à usage unique se revendique, il ne se vérifie pas.** `claim_burned()` écrit sous condition et lit le nombre de lignes modifiées : c'est le seul point atomique d'une requête. Servir puis détruire laisse une fenêtre large d'une requête PHP entière — vingt lecteurs simultanés en ont tiré dix-sept copies. Ne remettez jamais un contrôle avant le service à la place de l'écriture conditionnelle.
 - **Rien ne décrit le contenu d'un secret, pas même une étiquette.** L'inventaire ne connaît que l'identifiant, les dates et les accès. Un titre en clair a été écrit puis retiré : il rendait la liste plus lisible au prix de la seule métadonnée parlante que le serveur aurait pu lire. N'en réintroduisez pas sans que ce soit un choix assumé et écrit.
 - **L'inventaire est cloisonné par compte.** La propriété se vérifie dans la requête SQL, pas avant : un identifiant qui n'est pas à vous ne correspond simplement à rien.
 - **Le document root est `public/`.** Le reste du dépôt ne doit jamais être servi.
@@ -18,7 +19,7 @@ Ce sont les promesses du produit. Une modification qui en casse une est un bug, 
 ## Commandes
 
 ```bash
-./tests/run.sh                    # 248 tests, quelques minutes — à lancer avant de valider
+./tests/run.sh                    # 261 tests, quelques minutes — à lancer avant de valider
 ./tests/run.sh --no-browser       # sans Chromium, plus rapide pendant l'itération
 ./tests/run.sh --matrix           # suites PHP sur les huit combinaisons version × serveur
 
@@ -61,8 +62,12 @@ Chacun a coûté du temps une fois ; ils sont documentés pour ne pas le refaire
 - **La validation HTML5 native empêche l'événement `submit` d'être émis.** Le champ de date porte un `min` : Chromium refuse le formulaire lui-même, le gestionnaire `submit` n'est jamais appelé, et un test qui attend le message de l'application patiente jusqu'au délai d'attente. Le filet applicatif reste indispensable — un navigateur qui ne connaît pas `type="date"` le rend en champ texte et ne valide rien — et pour l'éprouver, un test pose `form.noValidate = true`.
 - **Trois pages sur cinq fonctionnent sans JavaScript, deux ne le peuvent pas.** `login.php`, `logout.php` et `secrets.php` sont du HTML et des POST classiques : gardez-les ainsi. `index.php` et `view.php` chiffrent ou déchiffrent, donc elles portent un `<noscript>` qui le dit. « Chargement… » est écrit par le script, jamais par le HTML — sinon la page promet sans script ce qu'elle ne tiendra pas.
 - **Les instants sont écrits en UTC et localisés par le navigateur.** `time_tag()` pose l'instant trois fois dans un même élément — `datetime` pour la machine, `data-stamp` pour le script, et le texte UTC pour qui n'exécute aucun script — et `stashbin.js` réécrit ce texte. Ne remplacez pas ça par une conversion côté serveur : il ne connaît pas le fuseau du lecteur. C'est aussi pourquoi `secrets.php` charge le script.
+- **PDO lie les paramètres en texte, et SQLite compare par classe de stockage : un entier est *toujours* inférieur à une chaîne.** `COUNT(*) < ?` avec `100` lié en texte est donc vrai quel que soit le compte — le plafond du journal n'a rien plafonné jusqu'à ce qu'on écrive `CAST(? AS INTEGER)`. Les comparaisons sur une colonne (`expires < ?`) y échappent : l'affinité `INTEGER` de la colonne convertit le paramètre. Le piège n'existe que lorsque les deux côtés sont des expressions.
+- **Une requête laissée ouverte retient une transaction de lecture WAL.** `$stmt->fetch()` sans `closeCursor()`, puis une écriture sur la même connexion : « database is locked », et `busy_timeout` ne réessaie pas ce refus-là — c'est un conflit d'instantané, pas une attente de verrou. `api.php` ferme le curseur juste après la lecture, et toutes les écritures qui suivent en dépendent.
+- **Une exception non rattrapée sortait en trace d'appel sous un statut `200`.** Un plantage passait donc pour un succès, ce qui a masqué la course ci-dessus pendant tout un test. `set_exception_handler()` dans `bootstrap.php` renvoie un `500` et le code stable `internal_error` ; ne le retirez pas au prétexte que `display_errors` est déjà à `Off` en production.
 - **`json_extract()` lève une erreur sur une chaîne vide, pas un `NULL`.** Le payload d'une pierre tombale est effacé (`''`), donc toute lecture JSON de `payload` doit passer par `CASE WHEN json_valid(payload) THEN …`. Sans ce garde-fou, l'inventaire tombe en erreur fatale dès qu'une entrée est terminée — et une base neuve n'en a aucune, donc ça se voit tard.
 - **L'expiration choisie se saisit en deux champs, `date` et `time`.** Un `datetime-local` unique donne un calendrier à Firefox et rien pour l'heure, qu'il faut taper. Les deux champs partent d'aujourd'hui à la minute suivante, et `syncExpiry()` les rafraîchit dès que l'instant qu'ils portent est passé : c'est ce qui évite qu'un formulaire laissé ouvert propose un moment révolu.
+- **L'opcache du conteneur revalide toutes les 2 secondes.** Une mutation suivie immédiatement de son test rejoue l'ancien code : l'effet apparaît au tour suivant, et une mutation bien détectée passe pour ignorée — pendant que la précédente fait échouer un test sans rapport. Laissez passer quelques secondes entre l'écriture et l'exécution.
 - **Ne restaurez jamais un fichier par `git checkout` pendant une mutation de test** tant que le travail n'est pas commité : les fichiers nouveaux ne sont pas connus de git, et les fichiers modifiés reviennent à `HEAD`, pas à l'état d'avant la mutation. Commitez d'abord, mutez ensuite.
 
 ## Organisation
@@ -101,7 +106,7 @@ Les suites PHP tournent **dans le conteneur applicatif** : elles peuvent donc co
 
 Le libellé d'un test se lit comme une phrase et décrit le comportement attendu, pas la mécanique : « un visiteur anonyme ne peut pas créer de secret (401) », pas « test création 401 ».
 
-Après avoir ajouté une fonctionnalité, cassez-la volontairement et vérifiez qu'au moins un test s'en aperçoit. Le jeu de test actuel a été validé ainsi : vingt-quatre régressions introduites, vingt-quatre détectées.
+Après avoir ajouté une fonctionnalité, cassez-la volontairement et vérifiez qu'au moins un test s'en aperçoit. Le jeu de test actuel a été validé ainsi : vingt-huit régressions introduites, vingt-huit détectées.
 
 ## Git
 

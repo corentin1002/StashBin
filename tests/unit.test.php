@@ -139,6 +139,23 @@ test('an absent or empty variable overrides nothing', function () {
     }
 });
 
+test('STASHBIN_TRUST_PROXY follows the same rules as STASHBIN_AUTH', function () use ($base) {
+    try {
+        foreach (['0', 'false', 'off', 'no', 'FALSE'] as $value) {
+            putenv("STASHBIN_TRUST_PROXY=$value");
+            assert_eq(false, env_overrides($base)['trust_proxy'] ?? null, "\"$value\" trusts nothing");
+        }
+        foreach (['1', 'true', 'on', 'yes'] as $value) {
+            putenv("STASHBIN_TRUST_PROXY=$value");
+            assert_eq(true, env_overrides($base)['trust_proxy'] ?? null, "\"$value\" trusts the proxy");
+        }
+        putenv('STASHBIN_TRUST_PROXY');
+        assert_true(!array_key_exists('trust_proxy', env_overrides($base)), 'absent, it decides nothing');
+    } finally {
+        putenv('STASHBIN_TRUST_PROXY');
+    }
+});
+
 test('STASHBIN_DB replaces the database path', function () use ($base) {
     $saved = getenv('STASHBIN_DB');
     try {
@@ -356,6 +373,84 @@ test('refuses anything that is not a whole number of seconds', function () use (
     foreach ([null, true, 1.5, '12abc', '', [], '2026-08-05T18:30', $now . '.5'] as $bad) {
         assert_eq(null, custom_expiry($bad, $now), 'rejected: ' . var_export($bad, true));
     }
+});
+
+// ---------------------------------------------------------------------------
+group('Claiming a single-use secret — claim_burned()');
+
+test('the first caller wins and the others are told nothing is left', function () {
+    db()->prepare('INSERT INTO pastes (id, payload, burn, delete_hash, created, expires, owner_id) VALUES (?,?,?,?,?,?,?)')
+        ->execute(['claim-possede', '{"ct":"X"}', 1, 'h', time(), null, 1]);
+
+    assert_true(claim_burned('claim-possede'), 'the first claim succeeds');
+    assert_true(!claim_burned('claim-possede'), 'the second finds nothing to claim');
+    assert_true(!claim_burned('claim-possede'), 'and so does every one after it');
+
+    $row = db()->query("SELECT payload, gone_cause FROM pastes WHERE id='claim-possede'")->fetch();
+    assert_eq('', $row['payload'], 'the ciphertext is gone with the first claim');
+    assert_eq('burned', $row['gone_cause'], 'and the cause is recorded once');
+});
+
+test('a secret nobody owns is claimed by removing it', function () {
+    db()->prepare('INSERT INTO pastes (id, payload, burn, delete_hash, created, expires) VALUES (?,?,?,?,?,?)')
+        ->execute(['claim-orphelin', '{"ct":"X"}', 1, 'h', time(), null]);
+
+    assert_true(claim_burned('claim-orphelin'), 'the first claim succeeds');
+    assert_true(!claim_burned('claim-orphelin'), 'the row is gone, so nothing is left to claim');
+    $left = db()->query("SELECT COUNT(*) FROM pastes WHERE id='claim-orphelin'")->fetchColumn();
+    assert_eq(0, (int) $left, 'removed outright, having no list to appear in');
+});
+
+test('an identifier that does not exist is claimed by nobody', function () {
+    assert_true(!claim_burned('claim-inexistant'), 'no row, no claim');
+});
+
+// ---------------------------------------------------------------------------
+group('Behind a proxy — pick_client_ip() / pick_https()');
+
+// Pure functions, and deliberately so: X-Forwarded-* is written by whoever
+// sends the request, and every combination of trusted and forged has to be
+// checked without standing up a proxy to do it.
+
+test('an untrusted X-Forwarded-For is ignored, whatever it claims', function () {
+    // Believing it would let a reader choose what the access log says about
+    // them — the whole point of the log being to say who came.
+    assert_eq('192.0.2.7', pick_client_ip('192.0.2.7', '203.0.113.9', false), 'the address the server saw');
+    assert_eq('192.0.2.7', pick_client_ip('192.0.2.7', '203.0.113.9, 198.51.100.1', false), 'a chain changes nothing');
+});
+
+test('a trusted proxy names the reader, not itself', function () {
+    // Without this, every access behind a TLS terminator is logged as coming
+    // from the proxy, and the log says nothing at all.
+    assert_eq('203.0.113.9', pick_client_ip('10.0.0.2', '203.0.113.9', true), 'the client, first in the chain');
+    assert_eq('203.0.113.9', pick_client_ip('10.0.0.2', ' 203.0.113.9 , 10.0.0.1 ', true), 'spacing and proxies ignored');
+});
+
+test('a forged X-Forwarded-For falls back rather than being recorded', function () {
+    foreach (['pas-une-adresse', '', '<script>', '999.999.999.999'] as $forged) {
+        assert_eq('10.0.0.2', pick_client_ip('10.0.0.2', $forged, true), "rejected: \"$forged\"");
+    }
+});
+
+test('no address at all is null, never an empty string', function () {
+    assert_eq(null, pick_client_ip(null, null, false), 'nothing to record');
+    assert_eq(null, pick_client_ip('', null, true), 'an empty REMOTE_ADDR is not an address');
+});
+
+test('HTTPS is recognised however the web server spells it', function () {
+    assert_true(pick_https('on', null, false), '"on"');
+    assert_true(pick_https('1', null, false), '"1"');
+    assert_true(!pick_https('off', null, false), '"off" means plain HTTP');
+    assert_true(!pick_https(null, null, false), 'absent means plain HTTP');
+});
+
+test('X-Forwarded-Proto counts only from a trusted proxy', function () {
+    // This is what marks the session cookie Secure. Believed unconditionally,
+    // any client could claim its own connection was encrypted.
+    assert_true(!pick_https(null, 'https', false), 'ignored when no proxy is declared');
+    assert_true(pick_https(null, 'https', true), 'honoured when one is');
+    assert_true(pick_https(null, ' HTTPS ', true), 'case and spacing forgiven');
+    assert_true(!pick_https(null, 'http', true), 'and it has to actually say https');
 });
 
 // ---------------------------------------------------------------------------

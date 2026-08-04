@@ -36,6 +36,13 @@ function env_overrides(array $config): array
         $config['default_locale'] = strtolower($locale);
     }
 
+    // Same shape as STASHBIN_AUTH, and for the same reason: the value that
+    // matters most is the falsy one, which "?:" would swallow.
+    $proxy = getenv('STASHBIN_TRUST_PROXY');
+    if (is_string($proxy) && $proxy !== '') {
+        $config['trust_proxy'] = !in_array(strtolower($proxy), ['0', 'false', 'off', 'no'], true);
+    }
+
     return $config;
 }
 
@@ -133,6 +140,32 @@ function custom_expiry(mixed $value, int $now): ?int
     return $value;
 }
 
+// Claims a single-use secret for the request that is about to serve it, and
+// says whether it won. Exactly one caller can: the write is the only atomic
+// point in a request, so its row count — not a check performed earlier — is
+// what decides.
+//
+// Reading the row, serving it, then destroying it looks equivalent and is not.
+// The gap between the read and the destruction is a whole PHP request wide, and
+// every reader arriving inside it sees a live secret: twenty simultaneous
+// readers used to walk away with seventeen copies of a secret promised to one.
+function claim_burned(string $id): bool
+{
+    $owned = db()->prepare(
+        "UPDATE pastes SET payload = '', gone = ?, gone_cause = 'burned'
+         WHERE id = ? AND gone IS NULL AND owner_id IS NOT NULL"
+    );
+    $owned->execute([time(), $id]);
+    if ($owned->rowCount() === 1) {
+        return true;
+    }
+    // No owner: the row is removed outright, and the same reasoning applies —
+    // whoever the DELETE reports as having removed it is the one reader.
+    $orphan = db()->prepare('DELETE FROM pastes WHERE id = ? AND owner_id IS NULL');
+    $orphan->execute([$id]);
+    return $orphan->rowCount() === 1;
+}
+
 // Wipes the ciphertext but keeps the row, so that the creator's list can still
 // say what became of the secret and when. A secret nobody owns has no list to
 // appear in: it goes for good, and its access log with it.
@@ -170,22 +203,70 @@ function purge_expired(): void
 // Nothing is written for a secret without an owner: nobody would ever read it.
 // The INSERT ... SELECT makes that condition part of the write itself, so a
 // vanished row cannot leave a dangling log entry behind.
+// Bounded on purpose. Anyone holding a link can call the API, and each call
+// used to write a row carrying 200 characters of their choosing — including on
+// a secret long gone, since a replayed link is worth recording. Unbounded, that
+// is a stranger filling the disk and burying the entries their owner cares
+// about. The first accesses are the ones that answer "did they read it?", so
+// the cap keeps those and drops the flood.
 function record_read(string $id, string $outcome): void
 {
     db()->prepare(
         'INSERT INTO paste_reads (paste_id, at, outcome, ip, agent)
-         SELECT id, ?, ?, ?, ? FROM pastes WHERE id = ? AND owner_id IS NOT NULL'
-    )->execute([time(), $outcome, client_ip(), client_agent(), $id]);
+         SELECT id, ?, ?, ?, ? FROM pastes
+          WHERE id = ? AND owner_id IS NOT NULL
+            AND (SELECT COUNT(*) FROM paste_reads WHERE paste_id = ?) < CAST(? AS INTEGER)'
+    )->execute([time(), $outcome, client_ip(), client_agent(), $id, $id, config()['access_log_max']]);
 }
 
-// The reader's address, as the web server saw it. Deliberately not read from
-// X-Forwarded-For: that header is written by whoever sends the request, so
-// trusting it would let any reader dictate what the log says about them. Behind
-// a proxy, it is the proxy's job to set REMOTE_ADDR (mod_remoteip, realip).
+// Whether a proxy in front of us may be believed. Off by default: X-Forwarded-*
+// is written by whoever sends the request, so believing it unconditionally lets
+// any reader dictate both what the log says about them and whether their
+// session cookie is treated as secure.
+function trust_proxy(): bool
+{
+    return config()['trust_proxy'] === true;
+}
+
+// Pure, and deliberately so — the same reason negotiate_locale() is: it is the
+// only way to test every combination without standing up a proxy.
+function pick_client_ip(?string $remote, ?string $forwarded, bool $trusted): ?string
+{
+    if ($trusted && $forwarded !== null) {
+        // The first entry is the client; what follows are the proxies it went
+        // through. An entry that is not an address is discarded rather than
+        // recorded, since it can only be a forgery or a mistake.
+        $first = trim(explode(',', $forwarded)[0]);
+        if (filter_var($first, FILTER_VALIDATE_IP) !== false) {
+            return $first;
+        }
+    }
+    return ($remote === null || $remote === '') ? null : $remote;
+}
+
+// "on", "1" and any non-empty value other than "off" mean HTTPS: the variable
+// is set by the web server and its spelling varies between them.
+function pick_https(?string $https, ?string $forwardedProto, bool $trusted): bool
+{
+    if ($https !== null && $https !== '' && strtolower($https) !== 'off') {
+        return true;
+    }
+    return $trusted && strtolower(trim((string) $forwardedProto)) === 'https';
+}
+
+// The reader's address, as the server saw it — or as a trusted proxy reports it.
 function client_ip(): ?string
 {
-    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
-    return $ip === '' ? null : $ip;
+    return pick_client_ip($_SERVER['REMOTE_ADDR'] ?? null, $_SERVER['HTTP_X_FORWARDED_FOR'] ?? null, trust_proxy());
+}
+
+// Whether this request reached us over HTTPS. Behind a proxy terminating TLS,
+// PHP sees plain HTTP and only the proxy knows better, which is what
+// trust_proxy is for: without it the session cookie loses its Secure flag on
+// exactly the deployment the README recommends.
+function request_is_https(): bool
+{
+    return pick_https($_SERVER['HTTPS'] ?? null, $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? null, trust_proxy());
 }
 
 // The browser the reader declares. Kept because it is often the explanation for
@@ -206,7 +287,7 @@ function start_session(): void
     session_set_cookie_params([
         'httponly' => true,
         'samesite' => 'Lax',
-        'secure' => !empty($_SERVER['HTTPS']),
+        'secure' => request_is_https(),
         'path' => '/',
     ]);
     session_start();
@@ -265,11 +346,30 @@ function check_csrf(string $token): bool
     return !empty($_SESSION['csrf']) && hash_equals($_SESSION['csrf'], $token);
 }
 
+// An uncaught exception used to reach the visitor as a stack trace naming
+// internal paths — under a 200, since the headers were already out, so a crash
+// read as a success and a race condition hid behind it for as long as it did.
+// The detail belongs in the server's log and nowhere else.
+set_exception_handler(static function (Throwable $e): void {
+    error_log('StashBin: ' . $e);
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
+    }
+    echo json_encode(['error' => 'internal error', 'code' => 'internal_error'], JSON_UNESCAPED_SLASHES);
+});
+
 function security_headers(): void
 {
     header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
     header('X-Content-Type-Options: nosniff');
     header('Referrer-Policy: no-referrer');
+    // Nothing PHP serves here is worth keeping: the API's body is the
+    // ciphertext itself, which would otherwise outlive a burnt secret in the
+    // reader's disk cache, and the inventory carries the addresses of everyone
+    // who opened a link. The stylesheet and the script are served by the web
+    // server and keep their caching.
+    header('Cache-Control: no-store');
 }
 
 function json_out(int $status, array $data): never

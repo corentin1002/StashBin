@@ -65,6 +65,18 @@ test('the headers are set on the API too', function () use ($http) {
     assert_contains("default-src 'none'", $csp, 'API protected the same way');
 });
 
+test('nothing PHP serves may be kept in a cache', function () use ($http) {
+    // The API's body is the ciphertext itself: cached, it outlives a burnt
+    // secret in the reader's own disk. The inventory carries the addresses of
+    // everyone who opened a link. Neither is worth keeping anywhere.
+    $token = $http->csrfToken();
+    $id = $http->createSecret([], $token)->json()['id'];
+    foreach (['/api.php?id=' . $id, '/secrets.php', '/index.php', '/login.php'] as $path) {
+        $res = $http->get($path);
+        assert_contains('no-store', (string) $res->header('Cache-Control'), "$path may not be stored");
+    }
+});
+
 // ---------------------------------------------------------------------------
 // The French literals asserted below are the interface strings themselves: the
 // HTTP client of lib.php requests Accept-Language: fr, so that the labels these

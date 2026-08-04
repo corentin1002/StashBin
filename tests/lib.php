@@ -238,6 +238,44 @@ final class Http
         return new Response($status, $headers, substr($raw, $headerSize));
     }
 
+    /**
+     * Fires the same GET several times at once, and returns every status and
+     * body. Bodies matter: a crash came back as 200 with a stack trace in it,
+     * so counting statuses alone would call a failure a success.
+     *
+     * @return list<array{status:int,body:string}>
+     */
+    public function parallelGet(string $path, int $times): array
+    {
+        $multi = curl_multi_init();
+        $handles = [];
+        for ($i = 0; $i < $times; $i++) {
+            $ch = curl_init($this->base . $path);
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30]);
+            curl_multi_add_handle($multi, $ch);
+            $handles[] = $ch;
+        }
+        do {
+            $status = curl_multi_exec($multi, $running);
+            if ($running) {
+                curl_multi_select($multi);
+            }
+        } while ($running && $status === CURLM_OK);
+
+        $out = [];
+        foreach ($handles as $ch) {
+            $out[] = [
+                'status' => (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE),
+                'body' => (string) curl_multi_getcontent($ch),
+            ];
+            curl_multi_remove_handle($multi, $ch);
+            curl_close($ch);
+        }
+        curl_multi_close($multi);
+
+        return $out;
+    }
+
     /** Opens a session for this account. Returns the CSRF token of the creation page. */
     public function login(string $user, string $password): string
     {
