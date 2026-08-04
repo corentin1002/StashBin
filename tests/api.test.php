@@ -270,6 +270,50 @@ test('an ordinary secret survives several reads', function () use ($http, $token
     }
 });
 
+test('a single-use secret is served to exactly one of twenty simultaneous readers', function () use ($http, $token) {
+    // Reading the row, serving it, then destroying it leaves a window a whole
+    // request wide, and every reader arriving inside it used to receive a copy
+    // of a secret promised to one: twenty readers, seventeen copies.
+    //
+    // The bodies are what is counted, not the statuses. A crash used to come
+    // back as 200 with a stack trace inside, which is how this went unnoticed.
+    $marker = 'Q0lQSEVSVU5JUVVF';
+    $id = $http->createSecret(['burn' => true, 'payload' => [
+        'v' => 1, 'iv' => 'A', 'salt' => 'B', 'iter' => 310000, 'pwd' => 0, 'ct' => $marker,
+    ]], $token)->json()['id'];
+
+    $responses = $http->parallelGet('/api.php?id=' . $id, 20);
+    $served = array_filter($responses, static fn (array $r): bool => str_contains($r['body'], $marker));
+    assert_eq(1, count($served), 'exactly one reader receives the secret');
+
+    foreach ($responses as $r) {
+        assert_true(!str_contains($r['body'], 'Fatal error'), 'no crash hiding behind a status');
+        assert_true(!str_contains($r['body'], 'internal_error'), 'and none reported as a server error');
+        assert_true(in_array($r['status'], [200, 404], true), "unexpected status {$r['status']}");
+    }
+});
+
+test('the access log stops growing once a secret has been read its fill', function () use ($http, $token) {
+    // Anyone holding a link can cause a row to be written, carrying 200
+    // characters of their choosing — on a spent secret too, since a replayed
+    // link is worth recording. Unbounded, that is a stranger filling the disk.
+    $id = $http->createSecret([], $token)->json()['id'];
+    $max = config()['access_log_max'];
+    $seed = db()->prepare('INSERT INTO paste_reads (paste_id, at, outcome, ip, agent) VALUES (?, ?, ?, ?, ?)');
+    for ($i = 0; $i < $max - 1; $i++) {
+        $seed->execute([$id, time(), 'served', '10.0.0.1', 'seed']);
+    }
+    $count = static fn (): int => (int) db()->query(
+        'SELECT COUNT(*) FROM paste_reads WHERE paste_id = ' . db()->quote($id)
+    )->fetchColumn();
+
+    $http->get('/api.php?id=' . $id);
+    assert_eq($max, $count(), 'the one that fills the cap is still recorded');
+    $http->get('/api.php?id=' . $id);
+    $http->get('/api.php?id=' . $id);
+    assert_eq($max, $count(), 'and nothing past it');
+});
+
 // ---------------------------------------------------------------------------
 group('Deletion link');
 

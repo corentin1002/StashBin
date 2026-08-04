@@ -98,7 +98,12 @@ $stmt = db()->prepare(
 $stmt->execute(['served', $user['id']]);
 $secrets = $stmt->fetchAll();
 
-$logs = db()->prepare('SELECT at, outcome, ip, agent FROM paste_reads WHERE paste_id = ? ORDER BY at DESC');
+// Bounded like the writing side, and for databases written before it was:
+// an entry flooded by a stranger must not turn its owner's page into a
+// thousand rows of their user agent.
+$logs = db()->prepare(
+    'SELECT at, outcome, ip, agent FROM paste_reads WHERE paste_id = ? ORDER BY at DESC LIMIT ?'
+);
 
 // Entries whose secret is gone — expired, deleted or read once. They pile up on
 // their own as secrets expire, hence the sweep.
@@ -155,7 +160,7 @@ $csrf = csrf_token();
     } else {
         $state = t('secrets.state_read_many', ['count' => $reads]);
     }
-    $logs->execute([$secret['id']]);
+    $logs->execute([$secret['id'], config()['access_log_max']]);
     $accesses = $logs->fetchAll();
   ?>
   <article class="secret<?= $secret['gone'] !== null ? ' gone' : '' ?>">

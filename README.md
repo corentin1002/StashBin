@@ -69,7 +69,7 @@ The code is mounted from the project: any change shows up immediately, with no r
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 248 tests, a few minutes
+./tests/run.sh          # 261 tests, a few minutes
 ./tests/run.sh --help   # options: version, server, full matrix…
 ```
 
@@ -193,6 +193,8 @@ Everything happens in `config.php`, which holds nothing but literal values: writ
 | `auth` | `true` | Authentication required to create and delete |
 | `max_size` | 2 MiB | Maximum size of the encrypted payload |
 | `expirations` / `default_expiration` | 1 h → never, `1w` | Lifetimes on offer, beside the date and time a creator may pick |
+| `trust_proxy` | `false` | Whether `X-Forwarded-For` and `X-Forwarded-Proto` may be believed. Turn it on **only** behind a proxy you control — and do turn it on there, or the session cookie loses its `Secure` flag and every access is logged as the proxy's |
+| `access_log_max` | `100` | Accesses recorded per secret, after which later ones are dropped. Anyone holding a link can cause a row to be written |
 | `default_locale` | `en` | Language served when the browser's is not translated |
 | `session_name` | `stashbin` | Name of the session cookie |
 
@@ -280,6 +282,7 @@ data/               SQLite database (created automatically)
 - Deleting requires being signed in **and** either holding the token handed to the creator, or being the owner of the secret. Neither credential grants the other: a leaked deletion link is unusable by a stranger, and a signed-in stranger cannot delete what is not theirs.
 - Those last two rules — and only those — fall away if the operator sets `'auth' => false`: an explicit choice, never the shipped default.
 - **What the server does know**, and it is worth knowing: which account created which secret, and for every access the date, the reader's IP address as the web server saw it and the browser it declared. Nothing describes the content — not even a label — and the log exists to answer "did they read it?". It is kept as long as the entry stays in its creator's list. An instance without authentication records none of it: no owner, no log.
+- A single-use secret is claimed by a conditional write before it is served, so that simultaneous readers cannot each walk away with a copy.
 - JavaScript is required to create and to read a secret, since that is where the encryption happens — the two pages concerned say so when it is off. Signing in and the inventory work without it.
 - `HttpOnly`/`SameSite` sessions, CSRF tokens, a strict CSP, hashed passwords (`password_hash`).
 - What a compromised server can do: delete secrets, serve malicious JavaScript to future visitors. This is the same limit as PrivateBin — server integrity still matters.

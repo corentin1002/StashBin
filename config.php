@@ -28,6 +28,22 @@ return [
     // Maximum size of the encrypted payload accepted (in bytes).
     'max_size' => 2 * 1024 * 1024,
 
+    // Whether a proxy standing in front of StashBin may be believed when it
+    // says, through X-Forwarded-For and X-Forwarded-Proto, who the reader is
+    // and whether they came over HTTPS.
+    //
+    // Leave this false unless a proxy you control is the only way in: those
+    // headers are written by whoever sends the request, so a reader could
+    // otherwise choose what the access log says about them. Set it to true
+    // behind a TLS-terminating proxy — without it the session cookie is not
+    // marked Secure, and every access is logged as coming from the proxy.
+    'trust_proxy' => false,
+
+    // How many accesses are recorded per secret. Anyone holding a link can
+    // cause a row to be written, so the log is bounded: past this many, the
+    // earliest are kept and later ones are dropped.
+    'access_log_max' => 100,
+
     // Lifetimes on offer (key => seconds, null = unlimited).
     'expirations' => [
         '1h'    => 3600,

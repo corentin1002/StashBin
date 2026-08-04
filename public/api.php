@@ -17,6 +17,12 @@ if ($method === 'GET') {
     $stmt = db()->prepare('SELECT * FROM pastes WHERE id = ?');
     $stmt->execute([$id]);
     $paste = $stmt->fetch();
+    // Releases the read transaction this statement holds open. Under WAL, a
+    // connection still reading cannot take the write lock once another has
+    // committed — it fails with "database is locked", and busy_timeout does
+    // not retry that particular refusal. Every write below depends on this
+    // line.
+    $stmt->closeCursor();
 
     // An identifier that never existed: nothing to record, and nothing to say
     // beyond the same 404 a spent secret gets.
@@ -64,10 +70,15 @@ if ($method === 'GET') {
         json_out(200, ['burn' => (bool) $paste['burn']]);
     }
 
-    record_read($id, 'served');
-    if ($paste['burn']) {
-        entomb($id, 'burned');
+    // Claimed before it is served, never after: the payload below was read
+    // before the claim wiped it, and only the reader whose claim succeeded may
+    // hand it on. Whoever loses the race is told what a late arrival is told.
+    if ($paste['burn'] && !claim_burned($id)) {
+        record_read($id, 'gone');
+        json_error(404, 'not_found');
     }
+
+    record_read($id, 'served');
     json_out(200, [
         'payload' => json_decode($paste['payload'], true),
         'burn' => (bool) $paste['burn'],
