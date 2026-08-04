@@ -653,26 +653,6 @@ await test('dates are shown in the reader\'s own timezone', async () => {
   await tokyo.close();
 });
 
-await test('without JavaScript the dates stay readable, and say they are UTC', async () => {
-  // The conversion is an improvement, not a dependency: the element's own text
-  // is the UTC rendering, and the page is worth reading without any script.
-  const plain = await browser.newContext({
-    ignoreHTTPSErrors: true, locale: 'fr-FR', timezoneId: 'Asia/Tokyo', javaScriptEnabled: false,
-  });
-  const p = await plain.newPage();
-  await p.goto(`${BASE}/login.php`);
-  await p.fill('input[name="username"]', USER);
-  await p.fill('input[name="password"]', PASS);
-  await Promise.all([p.waitForURL('**/index.php'), p.click('button[type="submit"]')]);
-  await p.goto(`${BASE}/secrets.php`);
-
-  const first = p.locator('article.secret .facts time').first();
-  const [iso, text] = [await first.getAttribute('datetime'), (await first.textContent()).trim()];
-  assertTrue(text.endsWith('UTC'), `UTC fallback shown (got: ${text})`);
-  assertEq(new Date(iso).toISOString().slice(0, 16).replace('T', ' ') + ' UTC', text, 'and it is the right instant');
-  await plain.close();
-});
-
 await test('an entry can be removed from the history once the secret is gone', async () => {
   const { share } = await createSecret(page, { text: 'éphémère', burn: true });
   const id = idOf(share);
@@ -683,6 +663,74 @@ await test('an entry can be removed from the history once the secret is gone', a
   await page.waitForURL('**/secrets.php?done=forgotten');
   assertEq(0, await page.locator('article.secret').filter({ hasText: id }).count(), 'entry gone from the list');
 });
+
+// ---------------------------------------------------------------------------
+group('Without JavaScript');
+
+// Encryption and decryption happen in the browser: two of the five pages cannot
+// work without a script, and the honest thing is to say so rather than present
+// a button that does nothing. The other three do work, and must keep working.
+const scriptless = await browser.newContext({
+  ignoreHTTPSErrors: true, locale: 'fr-FR', timezoneId: 'Asia/Tokyo', javaScriptEnabled: false,
+});
+
+/** Opens a page in the scriptless context, whose session is already open. */
+async function scriptlessPage(path) {
+  const p = await scriptless.newPage();
+  await p.goto(`${BASE}${path}`);
+  return p;
+}
+
+await test('signing in still works, being a plain form', async () => {
+  // Done once for the whole group: the context keeps the session afterwards,
+  // and login.php would only redirect.
+  const p = await scriptless.newPage();
+  await p.goto(`${BASE}/login.php`);
+  await p.fill('input[name="username"]', USER);
+  await p.fill('input[name="password"]', PASS);
+  await Promise.all([p.waitForURL('**/index.php'), p.click('button[type="submit"]')]);
+  assertTrue(p.url().includes('index.php'), 'the session opened without a script');
+  await p.close();
+});
+
+await test('the creation page says it cannot encrypt anything', async () => {
+  const p = await scriptlessPage('/index.php');
+  const notice = await p.locator('noscript p.warn').textContent();
+  assertTrue(notice.includes('JavaScript'), `the reason is named (got: ${notice})`);
+  await p.close();
+});
+
+await test('the reading page says so too, instead of loading for ever', async () => {
+  const p = await scriptlessPage(`/view.php?id=${'a'.repeat(16)}#clef`);
+  const notice = await p.locator('noscript p.warn').textContent();
+  assertTrue(notice.includes('JavaScript'), `the reason is named (got: ${notice})`);
+  // "Loading…" is written by the script: with none, nothing is promised.
+  assertEq('', (await p.textContent('#status')).trim(), 'no loading message left hanging');
+  await p.close();
+});
+
+await test('neither notice shows when a script does run', async () => {
+  // <noscript> is inert with scripting on, but the pages are what has to prove
+  // it: a notice permanently on screen would be worse than none.
+  await page.goto(`${BASE}/index.php`);
+  assertEq(0, await page.locator('p.warn:visible').count(), 'nothing on the creation page');
+});
+
+await test('the inventory works, and its dates fall back to UTC', async () => {
+  // The one page that degrades rather than stops: everything is server-side
+  // except the timezone conversion.
+  const p = await scriptlessPage('/secrets.php');
+  assertTrue(await p.locator('article.secret').count() > 0, 'the list is drawn');
+  assertTrue(await p.locator('article.secret button').first().isVisible(), 'and still has its buttons');
+
+  const first = p.locator('article.secret .facts time').first();
+  const [iso, text] = [await first.getAttribute('datetime'), (await first.textContent()).trim()];
+  assertTrue(text.endsWith('UTC'), `UTC fallback shown (got: ${text})`);
+  assertEq(new Date(iso).toISOString().slice(0, 16).replace('T', ' ') + ' UTC', text, 'and it is the right instant');
+  await p.close();
+});
+
+await scriptless.close();
 
 // ---------------------------------------------------------------------------
 group('Interface language');

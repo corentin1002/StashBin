@@ -15,6 +15,7 @@ return [
     'create.logout'              => 'Déconnexion',
     'create.my_secrets'          => 'Mes secrets',
     'create.no_auth_notice'      => 'Authentification désactivée : quiconque atteint cette page peut créer un secret.',
+    'create.noscript'            => '⚠️ JavaScript est désactivé. StashBin chiffre les secrets dans votre navigateur : sans lui, cette page ne peut rien créer.',
     'create.secret_label'        => 'Secret à partager',
     'create.secret_placeholder'  => 'Collez ici le texte à chiffrer…',
     'create.expire_label'        => 'Expiration',
@@ -42,7 +43,7 @@ return [
 
     // --- Reading page -------------------------------------------------------
     'view.page_title'        => 'StashBin — Secret partagé',
-    'view.loading'           => 'Chargement…',
+    'view.noscript'          => '⚠️ JavaScript est désactivé. StashBin déchiffre les secrets dans votre navigateur : sans lui, ce secret ne peut pas être affiché.',
     'view.burn_warning'      => '⚠️ Ce secret sera {emphasis}. Ne continuez que si vous êtes prêt à le lire maintenant.',
     'view.burn_emphasis'     => 'détruit dès sa lecture',
     'view.reveal'            => 'Afficher le secret',
@@ -98,6 +99,7 @@ return [
 
     // --- JavaScript strings -------------------------------------------------
     'js.encrypting'           => 'Chiffrement…',
+    'js.loading'              => 'Chargement…',
     'js.decrypting'           => 'Déchiffrement…',
     'js.copied'               => 'Copié ✔',
     'js.create_failed'        => 'Échec de la création : {error}',
