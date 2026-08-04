@@ -177,6 +177,110 @@ test('account passwords are hashed with a recognised algorithm', function () {
 });
 
 // ---------------------------------------------------------------------------
+group('The inventory belongs to its owner alone');
+
+// A second account, to make sure that the list is partitioned rather than
+// merely filtered on screen.
+$intruderName = 'intrus-inventaire';
+$intruderPass = 'motdepasseintrus';
+db()->prepare('DELETE FROM users WHERE username = ?')->execute([$intruderName]);
+db()->prepare('INSERT INTO users (username, pass_hash, created) VALUES (?, ?, ?)')
+    ->execute([$intruderName, password_hash($intruderPass, PASSWORD_DEFAULT), time()]);
+
+$intruder = new Http($base);
+$intruder->login($intruderName, $intruderPass);
+
+test('the inventory demands a session', function () use ($base) {
+    $anon = new Http($base);
+    $res = $anon->get('/secrets.php');
+    assert_eq(302, $res->status, 'anonymous visitor turned away');
+    assert_contains('login.php', (string) $res->header('Location'), 'sent to sign in');
+});
+
+test('a signed-in user sees their own secrets and nobody else\'s', function () use ($http, $token, $intruder) {
+    // The identifier is all an entry carries, so it is what the partitioning
+    // has to keep out of a stranger's page.
+    $mine = $http->createSecret([], $token)->json()['id'];
+
+    assert_contains($mine, $http->get('/secrets.php')->body, 'the owner finds their secret');
+    assert_not_contains($mine, $intruder->get('/secrets.php')->body, 'somebody else does not');
+});
+
+test('a signed-in user cannot delete a secret that is not theirs', function () use ($http, $token, $intruder) {
+    // Deleting from the list is the owner's right; the deletion token is the
+    // token holder's. Holding neither grants nothing.
+    $id = $http->createSecret([], $token)->json()['id'];
+
+    $page = $intruder->get('/secrets.php')->body;
+    preg_match('/name="csrf" value="([^"]+)"/', $page, $m);
+    $intruder->post('/secrets.php', ['csrf' => $m[1] ?? '', 'id' => $id, 'action' => 'delete']);
+
+    assert_eq(200, $http->get('/api.php?id=' . $id)->status, 'the secret is still readable');
+    $gone = db()->query('SELECT gone FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
+    assert_eq(null, $gone, 'and still considered live');
+});
+
+test('a signed-in user cannot erase somebody else\'s history', function () use ($http, $token, $intruder) {
+    $id = $http->createSecret([], $token)->json()['id'];
+    db()->prepare("UPDATE pastes SET gone = ?, gone_cause = 'deleted' WHERE id = ?")->execute([time(), $id]);
+
+    $page = $intruder->get('/secrets.php')->body;
+    preg_match('/name="csrf" value="([^"]+)"/', $page, $m);
+    $intruder->post('/secrets.php', ['csrf' => $m[1] ?? '', 'id' => $id, 'action' => 'forget']);
+
+    $left = db()->query('SELECT COUNT(*) FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
+    assert_eq(1, (int) $left, 'the entry stays in its owner\'s history');
+});
+
+test('clearing the history spares live secrets', function () use ($http, $token) {
+    // The sweep takes away entries, never ciphertext: a secret still readable
+    // has no business disappearing from the list that watches it.
+    $alive = $http->createSecret(['expire' => 'never'], $token)->json()['id'];
+    $spent = $http->createSecret(['burn' => true], $token)->json()['id'];
+    $http->get('/api.php?id=' . $spent);
+
+    $page = $http->get('/secrets.php')->body;
+    preg_match('/name="csrf" value="([^"]+)"/', $page, $m);
+    $http->post('/secrets.php', ['csrf' => $m[1] ?? '', 'action' => 'clear']);
+
+    assert_eq(200, $http->get('/api.php?id=' . $alive)->status, 'the live secret is untouched');
+    $left = db()->query('SELECT COUNT(*) FROM pastes WHERE id = ' . db()->quote($alive))->fetchColumn();
+    assert_eq(1, (int) $left, 'and still listed');
+    $swept = db()->query('SELECT COUNT(*) FROM pastes WHERE id = ' . db()->quote($spent))->fetchColumn();
+    assert_eq(0, (int) $swept, 'the finished one is gone');
+});
+
+test('clearing one history leaves everybody else\'s alone', function () use ($http, $token, $intruder) {
+    $mine = $http->createSecret([], $token)->json()['id'];
+    db()->prepare("UPDATE pastes SET gone = ?, gone_cause = 'expired' WHERE id = ?")->execute([time(), $mine]);
+
+    $page = $intruder->get('/secrets.php')->body;
+    preg_match('/name="csrf" value="([^"]+)"/', $page, $m);
+    $intruder->post('/secrets.php', ['csrf' => $m[1] ?? '', 'action' => 'clear']);
+
+    $left = db()->query('SELECT COUNT(*) FROM pastes WHERE id = ' . db()->quote($mine))->fetchColumn();
+    assert_eq(1, (int) $left, 'a stranger sweeping their own history clears none of mine');
+});
+
+test('the inventory refuses a write without a CSRF token', function () use ($http, $token) {
+    // The session cookie is SameSite=Lax, so another site can drive a POST at
+    // top level: the token is what stops it.
+    $id = $http->createSecret([], $token)->json()['id'];
+    $http->post('/secrets.php', ['id' => $id, 'action' => 'delete']);
+    $gone = db()->query('SELECT gone FROM pastes WHERE id = ' . db()->quote($id))->fetchColumn();
+    assert_eq(null, $gone, 'nothing deleted without the token');
+});
+
+test('the access log records the address the server saw, not the one claimed', function () use ($http, $token) {
+    // X-Forwarded-For is written by whoever sends the request: trusting it
+    // would let a reader dictate what the log says about them.
+    $id = $http->createSecret([], $token)->json()['id'];
+    $http->request('GET', '/api.php?id=' . $id, null, ['X-Forwarded-For' => '203.0.113.66']);
+    $ip = db()->query('SELECT ip FROM paste_reads WHERE paste_id = ' . db()->quote($id))->fetchColumn();
+    assert_true($ip !== '203.0.113.66', 'the claimed address is not what gets recorded');
+});
+
+// ---------------------------------------------------------------------------
 group('Injection');
 
 test('an identifier containing SQL does not disturb the query', function () use ($http) {

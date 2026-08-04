@@ -416,6 +416,143 @@ await test('the creator can delete their secret through the link provided', asyn
 });
 
 // ---------------------------------------------------------------------------
+group("The creator's inventory");
+
+/** The identifier a sharing link carries, which is what names an entry. */
+function idOf(link) {
+  return new URL(link).searchParams.get('id');
+}
+
+await test('the header navigates between creation and inventory', async () => {
+  // Buttons to look at, links to use: opening either in a new tab has to keep
+  // working, so these must stay anchors.
+  await page.goto(`${BASE}/index.php`);
+  const toInventory = page.locator('nav.actions a.btn').first();
+  assertEq('Mes secrets', (await toInventory.textContent()).trim(), 'the way to the inventory');
+  await toInventory.click();
+  await page.waitForURL('**/secrets.php*');
+
+  const back = page.locator('nav.actions a.btn').first();
+  assertEq('Créer un secret', (await back.textContent()).trim(), 'the way back');
+  await back.click();
+  await page.waitForURL('**/index.php*');
+  assertEq(1, await page.locator('#create-form').count(), 'back on the creation form');
+});
+
+await test('a secret just created heads the list, never read', async () => {
+  const { share } = await createSecret(page, { text: 'à inventorier' });
+  const id = idOf(share);
+
+  await page.goto(`${BASE}/secrets.php`);
+  const first = page.locator('article.secret').first();
+  assertEq(id, (await first.locator('h2').textContent()).trim(), 'newest first, named by its identifier');
+  assertTrue((await first.locator('.badge.state').textContent()).includes('Jamais consulté'), 'never read yet');
+});
+
+await test('reading the secret turns the entry into "read once"', async () => {
+  const { share } = await createSecret(page, { text: 'à lire' });
+  await readSecret(context, share);
+
+  await page.goto(`${BASE}/secrets.php`);
+  const entry = page.locator('article.secret').filter({ hasText: idOf(share) }).first();
+  assertTrue((await entry.locator('.badge.state').textContent()).includes('Consulté une fois'), 'one read counted');
+});
+
+await test('the access log names the browser that came for the secret', async () => {
+  const { share } = await createSecret(page, { text: 'à tracer' });
+  await readSecret(context, share);
+
+  await page.goto(`${BASE}/secrets.php`);
+  const entry = page.locator('article.secret').filter({ hasText: idOf(share) }).first();
+  await entry.locator('summary').click();
+  const log = await entry.locator('table').textContent();
+  assertTrue(log.includes('Secret remis'), 'the access is listed');
+  assertTrue(log.includes('HeadlessChrome') || log.includes('Chrome'), `the browser is named (got: ${log})`);
+});
+
+await test('deleting from the list makes the link stop working', async () => {
+  const { share } = await createSecret(page, { text: 'à supprimer' });
+  const id = idOf(share);
+
+  await page.goto(`${BASE}/secrets.php`);
+  await page.locator('article.secret').filter({ hasText: id }).first().locator('button').click();
+  await page.waitForURL('**/secrets.php?done=deleted');
+
+  const after = page.locator('article.secret').filter({ hasText: id }).first();
+  assertTrue((await after.locator('.badge.state').textContent()).includes('Supprimé'), 'entry reads as deleted');
+
+  const reader = await context.newPage();
+  await reader.goto(share);
+  await reader.waitForFunction(
+    () => !document.getElementById('status').textContent.includes('Chargement'),
+    null,
+    { timeout: 20000 },
+  );
+  assertTrue((await reader.textContent('#status')).includes('n’existe pas ou plus'), 'the reader gets nothing');
+  await reader.close();
+});
+
+await test('a burned secret is reported as destroyed, and the replay is logged', async () => {
+  const { share } = await createSecret(page, { text: 'usage unique', burn: true });
+  await readSecret(context, share, { confirmBurn: true });
+
+  // Coming back to a spent link is exactly what a chat application's link
+  // preview does to a single-use secret.
+  const late = await context.newPage();
+  await late.goto(share);
+  await late.waitForFunction(
+    () => !document.getElementById('status').textContent.includes('Chargement'),
+    null,
+    { timeout: 20000 },
+  );
+  await late.close();
+
+  await page.goto(`${BASE}/secrets.php`);
+  const entry = page.locator('article.secret').filter({ hasText: idOf(share) }).first();
+  assertTrue((await entry.locator('.badge.state').textContent()).includes('Détruit après lecture'), 'reported as burned');
+  await entry.locator('summary').click();
+  const log = await entry.locator('table').textContent();
+  assertTrue(log.includes('Lien rejoué'), 'the replay is in the log');
+});
+
+await test('one button clears every finished entry at once', async () => {
+  // Expired entries pile up on their own; removing them one at a time is what
+  // this button exists to spare.
+  const live = idOf((await createSecret(page, { text: 'toujours valide', expire: 'never' })).share);
+  const spent = [];
+  for (const text of ['fini 1', 'fini 2']) {
+    const { share } = await createSecret(page, { text, burn: true });
+    await readSecret(context, share, { confirmBurn: true });
+    spent.push(idOf(share));
+  }
+
+  await page.goto(`${BASE}/secrets.php`);
+  const sweep = page.locator('form.sweep button');
+  assertTrue((await sweep.textContent()).includes("Vider l'historique"), 'the sweep is offered');
+  await sweep.click();
+  await page.waitForURL(/secrets\.php\?done=cleared/);
+
+  const notice = await page.locator('p.warn').textContent();
+  assertTrue(notice.includes('retirées'), `the sweep says what it took (got: ${notice})`);
+  for (const id of spent) {
+    assertEq(0, await page.locator('article.secret').filter({ hasText: id }).count(), `${id} swept`);
+  }
+  assertEq(1, await page.locator('article.secret').filter({ hasText: live }).count(), 'the live secret stays');
+  assertEq(0, await page.locator('form.sweep').count(), 'nothing left to sweep, no button');
+});
+
+await test('an entry can be removed from the history once the secret is gone', async () => {
+  const { share } = await createSecret(page, { text: 'éphémère', burn: true });
+  const id = idOf(share);
+  await readSecret(context, share, { confirmBurn: true });
+
+  await page.goto(`${BASE}/secrets.php`);
+  await page.locator('article.secret').filter({ hasText: id }).first().locator('button').click();
+  await page.waitForURL('**/secrets.php?done=forgotten');
+  assertEq(0, await page.locator('article.secret').filter({ hasText: id }).count(), 'entry gone from the list');
+});
+
+// ---------------------------------------------------------------------------
 group('Interface language');
 
 // Fresh contexts: the one used by the previous tests carries an open session,
@@ -532,7 +669,7 @@ function tinyFields(p) {
 
 /** Visible tap targets shorter than 44px. */
 function tinyTargets(p) {
-  return p.evaluate(() => [...document.querySelectorAll('button, a, label.checkbox')]
+  return p.evaluate(() => [...document.querySelectorAll('button, a, label.checkbox, summary')]
     .filter((el) => {
       const h = el.getBoundingClientRect().height;
       return h > 0 && h < 44;
@@ -562,11 +699,18 @@ const asked = await phone.newPage();
 await asked.goto(guarded.share);
 await asked.waitForSelector('#password-prompt:not(.hidden)', { timeout: 20000 });
 
+// The inventory, with its access log unfolded: that table is the widest thing
+// the interface has to fit on a phone.
+const inventory = await phone.newPage();
+await inventory.goto(`${BASE}/secrets.php`);
+await inventory.evaluate(() => document.querySelectorAll('details').forEach((d) => (d.open = true)));
+
 const phonePages = [
   ['login.php', signin],
   ['index.php', author],
   ['view.php', reader],
   ['view.php (password)', asked],
+  ['secrets.php', inventory],
 ];
 
 await test('every page fits a 360px screen without touching its edges', async () => {

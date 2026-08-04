@@ -18,9 +18,27 @@ if ($method === 'GET') {
     $stmt->execute([$id]);
     $paste = $stmt->fetch();
 
-    if (!$paste || ($paste['expires'] !== null && $paste['expires'] < time())) {
-        if ($paste) {
-            db()->prepare('DELETE FROM pastes WHERE id = ?')->execute([$id]);
+    // An identifier that never existed: nothing to record, and nothing to say
+    // beyond the same 404 a spent secret gets.
+    if (!$paste) {
+        json_error(404, 'not_found');
+    }
+
+    // An expired secret is laid to rest on the spot rather than waiting for the
+    // next creation to sweep the table.
+    if ($paste['expires'] !== null && $paste['expires'] < time() && $paste['gone'] === null) {
+        entomb($id, 'expired');
+        $paste['gone'] = time();
+    }
+
+    if ($paste['gone'] !== null) {
+        // A read attempt on a spent secret is worth recording: that is how a
+        // creator learns their link was replayed after the fact. The metadata
+        // probe counts here, and only here: view.php sends it before anything
+        // else, so a reader arriving too late never gets as far as asking for
+        // the payload. Calling the deletion link is not a read.
+        if (!isset($_GET['delete'])) {
+            record_read($id, 'gone');
         }
         json_error(404, 'not_found');
     }
@@ -36,7 +54,7 @@ if ($method === 'GET') {
         if (!hash_equals($paste['delete_hash'], hash('sha256', (string) $_GET['delete']))) {
             json_error(403, 'bad_delete_token');
         }
-        db()->prepare('DELETE FROM pastes WHERE id = ?')->execute([$id]);
+        entomb($id, 'deleted');
         json_out(200, ['deleted' => true]);
     }
 
@@ -46,8 +64,9 @@ if ($method === 'GET') {
         json_out(200, ['burn' => (bool) $paste['burn']]);
     }
 
+    record_read($id, 'served');
     if ($paste['burn']) {
-        db()->prepare('DELETE FROM pastes WHERE id = ?')->execute([$id]);
+        entomb($id, 'burned');
     }
     json_out(200, [
         'payload' => json_decode($paste['payload'], true),
@@ -84,6 +103,11 @@ if ($method === 'POST') {
         }
     }
 
+    // Recorded so that the creator's list can exist at all. It is the only
+    // thing the server learns about a secret beyond its lifetime: nothing
+    // describes the content, not even a label.
+    $user = current_user();
+
     $expirations = config()['expirations'];
     $expireKey = $body['expire'] ?? config()['default_expiration'];
     if (!array_key_exists($expireKey, $expirations)) {
@@ -97,7 +121,8 @@ if ($method === 'POST') {
     $deleteToken = rtrim(strtr(base64_encode(random_bytes(18)), '+/', '-_'), '=');
 
     $stmt = db()->prepare(
-        'INSERT INTO pastes (id, payload, burn, delete_hash, created, expires) VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO pastes (id, payload, burn, delete_hash, created, expires, owner_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)'
     );
     $stmt->execute([
         $id,
@@ -106,6 +131,7 @@ if ($method === 'POST') {
         hash('sha256', $deleteToken),
         time(),
         $expires,
+        $user['id'] ?? null,
     ]);
 
     json_out(201, ['id' => $id, 'delete_token' => $deleteToken]);

@@ -19,6 +19,7 @@ Inspired by [PrivateBin](https://github.com/PrivateBin/PrivateBin), with one key
 - **Deletion link** — handed to the creator, usable only by a signed-in user.
 - **Multilingual interface** — English and French, chosen from the browser's language; adding a language means dropping a file into `src/lang/`.
 - **Usable on a phone** — one stylesheet, no framework: the layout reflows down to a 360px screen, fields stay at 16px so Safari iOS does not zoom in on focus, and tap targets reach 44px.
+- **An inventory for each creator** — every secret you made, named by the identifier its link carries, with its state (never read, read *n* times, destroyed after reading, deleted, expired), the log of accesses it received, a delete button while it still lives, and one button to clear every finished entry at once. Secrets are never readable from that page: their key never left the browser that made them.
 
 ## 🔍 How it works
 
@@ -68,7 +69,7 @@ The code is mounted from the project: any change shows up immediately, with no r
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 188 tests, a few minutes
+./tests/run.sh          # 224 tests, a few minutes
 ./tests/run.sh --help   # options: version, server, full matrix…
 ```
 
@@ -82,7 +83,7 @@ The runner starts a fresh instance, plays the five suites and tears everything d
 | Open instance | 19 | A second container without authentication: free creation, CSRF still required, guarantees unchanged |
 | Browser | 36 | Real Chromium: end-to-end cryptography, interface journeys, language served |
 
-The browser tests exercise the part nothing else covers — `deriveKey`, `encryptText`, `decryptPayload` — and check that a ciphertext altered by a single bit is rejected. The whole set has been validated by mutation: eighteen regressions deliberately introduced into the code, eighteen caught. See [`tests/README.md`](tests/README.md).
+The browser tests exercise the part nothing else covers — `deriveKey`, `encryptText`, `decryptPayload` — and check that a ciphertext altered by a single bit is rejected. The whole set has been validated by mutation: twenty-two regressions deliberately introduced into the code, twenty-two caught. See [`tests/README.md`](tests/README.md).
 
 ### With PHP alone
 
@@ -253,6 +254,7 @@ public/             document root: pages, API, assets
 ├── index.php       secret creation (authenticated)
 ├── view.php        public reading
 ├── api.php         JSON API (create, read, delete)
+├── secrets.php     the creator's inventory: states and access log
 ├── login.php       sign-in
 └── assets/         WebCrypto encryption + styles
 tests/              full test set (see its README)
@@ -275,8 +277,9 @@ data/               SQLite database (created automatically)
 
 - The server **never** sees the plaintext, the key, or the optional password.
 - Creating a secret requires an account; reading one only requires the link (plus the password, if any).
-- Deleting requires being signed in **and** holding the token handed to the creator.
+- Deleting requires being signed in **and** either holding the token handed to the creator, or being the owner of the secret. Neither credential grants the other: a leaked deletion link is unusable by a stranger, and a signed-in stranger cannot delete what is not theirs.
 - Those last two rules — and only those — fall away if the operator sets `'auth' => false`: an explicit choice, never the shipped default.
+- **What the server does know**, and it is worth knowing: which account created which secret, and for every access the date, the reader's IP address as the web server saw it and the browser it declared. Nothing describes the content — not even a label — and the log exists to answer "did they read it?". It is kept as long as the entry stays in its creator's list. An instance without authentication records none of it: no owner, no log.
 - `HttpOnly`/`SameSite` sessions, CSRF tokens, a strict CSP, hashed passwords (`password_hash`).
 - What a compromised server can do: delete secrets, serve malicious JavaScript to future visitors. This is the same limit as PrivateBin — server integrity still matters.
 

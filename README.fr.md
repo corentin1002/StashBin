@@ -19,6 +19,7 @@ Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une dif
 - **Lien de suppression** — remis au créateur, utilisable uniquement par un utilisateur connecté.
 - **Interface multilingue** — français et anglais, choisis d'après la langue du navigateur ; ajouter une langue, c'est déposer un fichier dans `src/lang/`.
 - **Utilisable sur téléphone** — une feuille de style, aucun framework : la mise en page se replie jusqu'à un écran de 360 px, les champs restent à 16 px pour que Safari iOS ne zoome pas à la mise au point, et les cibles tactiles atteignent 44 px.
+- **Un inventaire pour chaque créateur** — chaque secret créé, désigné par l'identifiant que porte son lien, avec son état (jamais consulté, consulté *n* fois, détruit après lecture, supprimé, expiré), le journal des accès reçus, un bouton de suppression tant qu'il vit, et un bouton unique pour vider d'un coup toutes les entrées terminées. Les secrets ne sont jamais consultables depuis cette page : leur clé n'a pas quitté le navigateur qui les a créés.
 
 ## 🔍 Comment ça marche
 
@@ -68,7 +69,7 @@ Le code est monté depuis le projet : toute modification est visible immédiatem
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 188 tests, quelques minutes
+./tests/run.sh          # 224 tests, quelques minutes
 ./tests/run.sh --help   # options : version, serveur, matrice complète…
 ```
 
@@ -82,7 +83,7 @@ Le lanceur démarre une instance neuve, joue les cinq suites et détruit tout : 
 | Instance ouverte | 19 | Second conteneur sans authentification : création libre, CSRF toujours exigée, garanties inchangées |
 | Navigateur | 36 | Chromium réel : cryptographie de bout en bout, parcours d'interface, langue servie |
 
-Les tests navigateur exercent la partie que rien d'autre ne couvre — `deriveKey`, `encryptText`, `decryptPayload` — et vérifient qu'un chiffré altéré d'un seul bit est rejeté. L'ensemble a été éprouvé par mutation : dix-huit régressions introduites volontairement dans le code, dix-huit détectées. Voir [`tests/README.md`](tests/README.md).
+Les tests navigateur exercent la partie que rien d'autre ne couvre — `deriveKey`, `encryptText`, `decryptPayload` — et vérifient qu'un chiffré altéré d'un seul bit est rejeté. L'ensemble a été éprouvé par mutation : vingt-deux régressions introduites volontairement dans le code, vingt-deux détectées. Voir [`tests/README.md`](tests/README.md).
 
 ### Avec PHP seul
 
@@ -253,6 +254,7 @@ public/             document root : pages, API, assets
 ├── index.php       création de secret (authentifié)
 ├── view.php        lecture publique
 ├── api.php         API JSON (création, lecture, suppression)
+├── secrets.php     inventaire du créateur : états et journal des accès
 ├── login.php       connexion
 └── assets/         chiffrement WebCrypto + styles
 tests/              jeu de test complet (voir son README)
@@ -275,8 +277,9 @@ data/               base SQLite (créée automatiquement)
 
 - Le serveur ne voit **jamais** le contenu en clair, la clé, ni le mot de passe optionnel.
 - Créer un secret exige un compte ; lire n'exige que le lien (+ mot de passe éventuel).
-- Supprimer exige d'être connecté **et** de posséder le jeton remis au créateur.
+- Supprimer exige d'être connecté **et**, soit de posséder le jeton remis au créateur, soit d'être le propriétaire du secret. L'un ne vaut jamais l'autre : un lien de suppression qui fuit est inutilisable par un inconnu, et un inconnu connecté ne peut pas supprimer ce qui ne lui appartient pas.
 - Ces deux dernières règles tombent — et seulement elles — si l'exploitant met `'auth' => false` : c'est un choix explicite, jamais le défaut livré.
+- **Ce que le serveur sait**, et il vaut mieux le savoir : quel compte a créé quel secret, et pour chaque accès la date, l'adresse IP du lecteur telle que vue par le serveur web, et le navigateur qu'il déclare. Rien ne décrit le contenu — pas même une étiquette — et ce journal existe pour répondre à « est-ce qu'il l'a lu ? ». Il vit tant que l'entrée reste dans la liste de son créateur. Une instance sans authentification n'enregistre rien de tout ça : ni propriétaire, ni journal.
 - Sessions `HttpOnly`/`SameSite`, jetons CSRF, CSP stricte, mots de passe hachés (`password_hash`).
 - Ce que le serveur peut faire s'il est compromis : supprimer des secrets, servir du JavaScript malveillant aux futurs visiteurs. C'est la même limite que PrivateBin — l'intégrité du serveur reste importante.
 

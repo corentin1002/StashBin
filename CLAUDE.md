@@ -8,15 +8,17 @@ Ce sont les promesses du produit. Une modification qui en casse une est un bug, 
 
 - **Le serveur ne voit jamais le texte en clair, la clé, ni le mot de passe.** Il stocke un payload opaque et le restitue à l'identique. Aucun déchiffrement côté serveur, jamais.
 - **La clé de déchiffrement vit dans le fragment `#` de l'URL**, qui n'est pas transmis au serveur. Ne la déplacez pas dans la partie interrogeable, ni dans un cookie, ni dans un en-tête.
-- **Créer exige un compte ; lire n'exige que le lien.** Supprimer exige une session ouverte **et** le jeton remis au créateur. Unique dérogation, et elle est explicite : `'auth' => false` dans `config.php` (ou `STASHBIN_AUTH=0`) ouvre création et suppression à tout visiteur. Le défaut livré est `true` et doit le rester ; tous les autres invariants tiennent quelle que soit la valeur.
+- **Créer exige un compte ; lire n'exige que le lien.** Supprimer exige une session ouverte **et**, soit le jeton remis au créateur, soit d'être le propriétaire du secret. Les deux titres sont distincts : l'un ne vaut jamais l'autre, et un inconnu connecté ne supprime rien qui ne soit à lui. Unique dérogation, et elle est explicite : `'auth' => false` dans `config.php` (ou `STASHBIN_AUTH=0`) ouvre création et suppression à tout visiteur. Le défaut livré est `true` et doit le rester ; tous les autres invariants tiennent quelle que soit la valeur.
 - **Le jeton de suppression est stocké haché** (SHA-256), jamais en clair.
+- **Rien ne décrit le contenu d'un secret, pas même une étiquette.** L'inventaire ne connaît que l'identifiant, les dates et les accès. Un titre en clair a été écrit puis retiré : il rendait la liste plus lisible au prix de la seule métadonnée parlante que le serveur aurait pu lire. N'en réintroduisez pas sans que ce soit un choix assumé et écrit.
+- **L'inventaire est cloisonné par compte.** La propriété se vérifie dans la requête SQL, pas avant : un identifiant qui n'est pas à vous ne correspond simplement à rien.
 - **Le document root est `public/`.** Le reste du dépôt ne doit jamais être servi.
 - **HTTPS est une condition de fonctionnement, pas un durcissement.** `crypto.subtle` n'existe que dans un contexte sécurisé (HTTPS ou origine loopback) : servi en HTTP simple sur un nom d'hôte ordinaire, StashBin ne peut rien chiffrer du tout.
 
 ## Commandes
 
 ```bash
-./tests/run.sh                    # 188 tests, quelques minutes — à lancer avant de valider
+./tests/run.sh                    # 224 tests, quelques minutes — à lancer avant de valider
 ./tests/run.sh --no-browser       # sans Chromium, plus rapide pendant l'itération
 ./tests/run.sh --matrix           # suites PHP sur les huit combinaisons version × serveur
 
@@ -54,6 +56,9 @@ Chacun a coûté du temps une fois ; ils sont documentés pour ne pas le refaire
 - **La CSP interdit le script inline**, donc les chaînes destinées au JavaScript ne peuvent pas être injectées dans un `<script>`. Elles voyagent en attribut `data-i18n` de `<body>`, posé par `client_strings()`. N'assouplissez pas la CSP pour contourner ça.
 - **Les contextes Chromium des tests fixent leur langue explicitement.** L'interface suit `Accept-Language` et la langue par défaut du navigateur varie d'une image à l'autre : sans `locale:` explicite, les libellés attendus deviennent imprévisibles. Un test de traduction ouvre en plus son propre contexte, sans session, sinon `login.php` redirige vers la page de création.
 - **Les tests navigateur partagent l'espace réseau du conteneur applicatif** pour obtenir une origine `127.0.0.1`, donc un contexte sécurisé. Ne remplacez pas ce montage par un drapeau Chromium de contournement : il ne fonctionne pas de façon fiable.
+- **`view.php` sonde `?meta` avant tout le reste.** Un lecteur qui arrive après la disparition du secret n'atteint donc jamais la requête du payload : c'est pourquoi le journal enregistre la sonde *quand le secret est mort*, et elle seule. La sonde sur un secret vivant, elle, n'est pas une lecture — la compter afficherait « consulté » pour un secret que personne n'a vu.
+- **`created` est en secondes.** Deux secrets créés dans la même seconde ne s'ordonnent pas d'eux-mêmes : l'inventaire trie `created DESC, rowid DESC`. Sans le second critère, l'ordre est indéterminé et un test navigateur le voit passer une fois sur deux.
+- **Ne restaurez jamais un fichier par `git checkout` pendant une mutation de test** tant que le travail n'est pas commité : les fichiers nouveaux ne sont pas connus de git, et les fichiers modifiés reviennent à `HEAD`, pas à l'état d'avant la mutation. Commitez d'abord, mutez ensuite.
 
 ## Organisation
 
@@ -62,6 +67,7 @@ config.php          valeurs littérales : authentification, expirations, taille
                     max, chemin de la base, langue de repli ; surcharges
                     d'environnement dans env_overrides() de src/bootstrap.php
 public/             document root — pages, api.php, assets/
+  secrets.php         inventaire du créateur : états, journal des accès
   assets/stashbin.js  toute la cryptographie navigateur
 src/bootstrap.php   base, sessions, CSRF, langue, helpers ; tout le code partagé
 src/lang/           un fichier par langue offerte ; fr.php fait référence
@@ -78,7 +84,7 @@ data/               base SQLite (ignorée par git)
 Toute modification du comportement doit venir avec un test. Le socle est `tests/lib.php` — assertions et client HTTP en une centaine de lignes, sans PHPUnit ni Composer.
 
 - Une règle métier ou un cas d'erreur → `tests/api.test.php`
-- Une garantie de sécurité → `tests/security.test.php`
+- Une garantie de sécurité, ou le cloisonnement d'un inventaire → `tests/security.test.php`
 - Un comportement propre à l'instance ouverte → `tests/noauth.test.php`, jouée contre un second conteneur démarré avec `STASHBIN_AUTH=0` (le réglage est lu au démarrage, il n'y a pas de bascule à chaud)
 - Une fonction de `src/bootstrap.php` → `tests/unit.test.php`
 - Une traduction ou la négociation de langue → `tests/unit.test.php` pour les fonctions, `tests/browser.test.mjs` pour ce que voit le visiteur
@@ -90,7 +96,7 @@ Les suites PHP tournent **dans le conteneur applicatif** : elles peuvent donc co
 
 Le libellé d'un test se lit comme une phrase et décrit le comportement attendu, pas la mécanique : « un visiteur anonyme ne peut pas créer de secret (401) », pas « test création 401 ».
 
-Après avoir ajouté une fonctionnalité, cassez-la volontairement et vérifiez qu'au moins un test s'en aperçoit. Le jeu de test actuel a été validé ainsi : douze régressions introduites, douze détectées.
+Après avoir ajouté une fonctionnalité, cassez-la volontairement et vérifiez qu'au moins un test s'en aperçoit. Le jeu de test actuel a été validé ainsi : vingt-deux régressions introduites, vingt-deux détectées.
 
 ## Git
 

@@ -29,8 +29,13 @@ $expirations = config()['expirations'];
     <?php if ($user !== null): ?>
     <p class="muted"><?= t_html('create.logged_in', [
         '{user}' => '<strong>' . e($user['username']) . '</strong>',
-        '{logout}' => '<a href="logout.php' . e(lang_param()) . '">' . e(t('create.logout')) . '</a>',
     ]) ?></p>
+    <!-- Links, not buttons: these navigate, and a middle click or a new tab
+         must keep working. Only their appearance is that of a button. -->
+    <nav class="actions">
+      <a class="btn" href="secrets.php<?= e(lang_param()) ?>"><?= e(t('create.my_secrets')) ?></a>
+      <a class="btn" href="logout.php<?= e(lang_param()) ?>"><?= e(t('create.logout')) ?></a>
+    </nav>
     <?php else: ?>
     <p class="muted"><?= e(t('create.no_auth_notice')) ?></p>
     <?php endif; ?>
