@@ -208,6 +208,10 @@ tr:last-child td { border-bottom: none; }
 td.stamp { font-family: ui-monospace, monospace; }
 td.agent { min-width: 16rem; white-space: normal; color: var(--muted); }
 
+/* The sweep sits above the list, where what it clears is in view. */
+.sweep { margin: 0; }
+.sweep button { margin-top: 0; }
+
 button.quiet { color: var(--accent); background: none; border: 1px solid var(--border); }
 @media (hover: hover) {
   button.quiet:hover { background: var(--bg); }

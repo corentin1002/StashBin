@@ -499,6 +499,32 @@ await test('a burned secret is reported as destroyed, and the replay is logged',
   assertTrue(log.includes('Lien rejoué'), 'the replay is in the log');
 });
 
+await test('one button clears every finished entry at once', async () => {
+  // Expired entries pile up on their own; removing them one at a time is what
+  // this button exists to spare.
+  const live = idOf((await createSecret(page, { text: 'toujours valide', expire: 'never' })).share);
+  const spent = [];
+  for (const text of ['fini 1', 'fini 2']) {
+    const { share } = await createSecret(page, { text, burn: true });
+    await readSecret(context, share, { confirmBurn: true });
+    spent.push(idOf(share));
+  }
+
+  await page.goto(`${BASE}/secrets.php`);
+  const sweep = page.locator('form.sweep button');
+  assertTrue((await sweep.textContent()).includes("Vider l'historique"), 'the sweep is offered');
+  await sweep.click();
+  await page.waitForURL(/secrets\.php\?done=cleared/);
+
+  const notice = await page.locator('p.warn').textContent();
+  assertTrue(notice.includes('retirées'), `the sweep says what it took (got: ${notice})`);
+  for (const id of spent) {
+    assertEq(0, await page.locator('article.secret').filter({ hasText: id }).count(), `${id} swept`);
+  }
+  assertEq(1, await page.locator('article.secret').filter({ hasText: live }).count(), 'the live secret stays');
+  assertEq(0, await page.locator('form.sweep').count(), 'nothing left to sweep, no button');
+});
+
 await test('an entry can be removed from the history once the secret is gone', async () => {
   const { share } = await createSecret(page, { text: 'éphémère', burn: true });
   const id = idOf(share);

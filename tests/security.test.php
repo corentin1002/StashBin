@@ -232,6 +232,36 @@ test('a signed-in user cannot erase somebody else\'s history', function () use (
     assert_eq(1, (int) $left, 'the entry stays in its owner\'s history');
 });
 
+test('clearing the history spares live secrets', function () use ($http, $token) {
+    // The sweep takes away entries, never ciphertext: a secret still readable
+    // has no business disappearing from the list that watches it.
+    $alive = $http->createSecret(['expire' => 'never'], $token)->json()['id'];
+    $spent = $http->createSecret(['burn' => true], $token)->json()['id'];
+    $http->get('/api.php?id=' . $spent);
+
+    $page = $http->get('/secrets.php')->body;
+    preg_match('/name="csrf" value="([^"]+)"/', $page, $m);
+    $http->post('/secrets.php', ['csrf' => $m[1] ?? '', 'action' => 'clear']);
+
+    assert_eq(200, $http->get('/api.php?id=' . $alive)->status, 'the live secret is untouched');
+    $left = db()->query('SELECT COUNT(*) FROM pastes WHERE id = ' . db()->quote($alive))->fetchColumn();
+    assert_eq(1, (int) $left, 'and still listed');
+    $swept = db()->query('SELECT COUNT(*) FROM pastes WHERE id = ' . db()->quote($spent))->fetchColumn();
+    assert_eq(0, (int) $swept, 'the finished one is gone');
+});
+
+test('clearing one history leaves everybody else\'s alone', function () use ($http, $token, $intruder) {
+    $mine = $http->createSecret([], $token)->json()['id'];
+    db()->prepare("UPDATE pastes SET gone = ?, gone_cause = 'expired' WHERE id = ?")->execute([time(), $mine]);
+
+    $page = $intruder->get('/secrets.php')->body;
+    preg_match('/name="csrf" value="([^"]+)"/', $page, $m);
+    $intruder->post('/secrets.php', ['csrf' => $m[1] ?? '', 'action' => 'clear']);
+
+    $left = db()->query('SELECT COUNT(*) FROM pastes WHERE id = ' . db()->quote($mine))->fetchColumn();
+    assert_eq(1, (int) $left, 'a stranger sweeping their own history clears none of mine');
+});
+
 test('the inventory refuses a write without a CSRF token', function () use ($http, $token) {
     // The session cookie is SameSite=Lax, so another site can drive a POST at
     // top level: the token is what stops it.

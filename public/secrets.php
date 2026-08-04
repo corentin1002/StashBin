@@ -24,7 +24,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     $id = (string) ($_POST['id'] ?? '');
     $done = null;
-    if (($_POST['action'] ?? '') === 'delete') {
+    $swept = 0;
+    if (($_POST['action'] ?? '') === 'clear') {
+        // Everything that is already at rest, whatever put it there. Live
+        // secrets are protected by the same condition that protects a single
+        // "remove from history": no ciphertext is destroyed here, only entries
+        // whose secret is already gone.
+        $stmt = db()->prepare('DELETE FROM pastes WHERE owner_id = ? AND gone IS NOT NULL');
+        $stmt->execute([$user['id']]);
+        $swept = $stmt->rowCount();
+        $done = $swept > 0 ? 'cleared' : null;
+    } elseif (($_POST['action'] ?? '') === 'delete') {
         $stmt = db()->prepare(
             "UPDATE pastes SET payload = '', gone = ?, gone_cause = 'deleted'
              WHERE id = ? AND owner_id = ? AND gone IS NULL"
@@ -39,13 +49,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $done = $stmt->rowCount() > 0 ? 'forgotten' : null;
     }
     // Redirect after the write, so that reloading the page does not replay it.
-    $query = array_filter(['lang' => isset($_GET['lang']) ? locale() : null, 'done' => $done]);
+    $query = array_filter([
+        'lang' => isset($_GET['lang']) ? locale() : null,
+        'done' => $done,
+        'n' => $swept > 0 ? (string) $swept : null,
+    ]);
     header('Location: secrets.php' . ($query === [] ? '' : '?' . http_build_query($query)));
     exit;
 }
 
+// $notice holds the sentence to display, already translated.
 $notices = ['deleted' => 'secrets.deleted_notice', 'forgotten' => 'secrets.forgotten_notice'];
-$notice = $notices[$_GET['done'] ?? ''] ?? null;
+$done = (string) ($_GET['done'] ?? '');
+$notice = isset($notices[$done]) ? t($notices[$done]) : null;
+
+// The sweep says how much it took away: clicking a button whose count has gone
+// stale must not be silent about what actually happened.
+if ($done === 'cleared') {
+    $swept = max(0, (int) ($_GET['n'] ?? 0));
+    $notice = $swept === 1 ? t('secrets.cleared_one') : t('secrets.cleared_many', ['count' => $swept]);
+}
 
 // Expiry is settled before the list is drawn, otherwise a secret whose time has
 // passed would still be shown as live until somebody created another one.
@@ -64,6 +87,10 @@ $stmt->execute(['served', $user['id']]);
 $secrets = $stmt->fetchAll();
 
 $logs = db()->prepare('SELECT at, outcome, ip, agent FROM paste_reads WHERE paste_id = ? ORDER BY at DESC');
+
+// Entries whose secret is gone — expired, deleted or read once. They pile up on
+// their own as secrets expire, hence the sweep.
+$finished = count(array_filter($secrets, static fn (array $s): bool => $s['gone'] !== null));
 
 $csrf = csrf_token();
 ?>
@@ -84,11 +111,20 @@ $csrf = csrf_token();
   </header>
 
   <?php if ($notice !== null): ?>
-  <p class="warn"><?= e(t($notice)) ?></p>
+  <p class="warn"><?= e($notice) ?></p>
   <?php endif; ?>
 
   <?php if ($secrets === []): ?>
   <p><?= e(t('secrets.empty')) ?></p>
+  <?php endif; ?>
+
+  <?php if ($finished > 0): ?>
+  <form method="post" action="secrets.php<?= e(lang_param()) ?>" class="sweep">
+    <input type="hidden" name="csrf" value="<?= e($csrf) ?>">
+    <button type="submit" name="action" value="clear" class="quiet">
+      <?= e(t('secrets.clear', ['count' => $finished])) ?>
+    </button>
+  </form>
   <?php endif; ?>
 
   <?php foreach ($secrets as $secret): ?>
