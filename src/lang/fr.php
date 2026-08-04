@@ -19,7 +19,7 @@ return [
     'create.secret_placeholder'  => 'Collez ici le texte à chiffrer…',
     'create.expire_label'        => 'Expiration',
     'create.expire_date_label'   => 'Date d\'expiration',
-    'create.expire_time_label'   => 'Heure (celle de votre appareil)',
+    'create.expire_time_label'   => 'Heure',
     'create.burn_label'          => 'Détruire après la première lecture',
     'create.password_label'      => 'Mot de passe (optionnel)',
     'create.password_placeholder' => 'Protection supplémentaire',

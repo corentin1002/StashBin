@@ -12,7 +12,7 @@ return [
     'create.secret_placeholder'  => 'Paste the text to encrypt here…',
     'create.expire_label'        => 'Expiry',
     'create.expire_date_label'   => 'Expiry date',
-    'create.expire_time_label'   => 'Time (your device\'s clock)',
+    'create.expire_time_label'   => 'Time',
     'create.burn_label'          => 'Destroy after first read',
     'create.password_label'      => 'Password (optional)',
     'create.password_placeholder' => 'Extra protection',
