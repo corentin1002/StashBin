@@ -10,6 +10,10 @@
 ARG PHP_TAG=8.4-fpm
 FROM docker.io/library/php:${PHP_TAG}
 
+# pdo_sqlite is built in; pdo_mysql is not, and it is what a MariaDB instance
+# is reached through.
+RUN docker-php-ext-install -j"$(nproc)" pdo_mysql > /dev/null
+
 RUN DEBIAN_FRONTEND=noninteractive apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx \
     && rm -rf /var/lib/apt/lists/* \

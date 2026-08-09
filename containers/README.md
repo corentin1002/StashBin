@@ -29,11 +29,19 @@ AUTH=0 ./containers/stashbin.sh up
 
 The script sets `STASHBIN_AUTH=0` in the container, which overrides `config.php`'s `'auth' => true` without touching it — the repository is mounted read-only.
 
+To run the instance on **MariaDB** rather than SQLite:
+
+```bash
+DB=mariadb ./containers/stashbin.sh up
+```
+
+A `stashbin-db` container is started on a network of its own, and the instance is pointed at it through `STASHBIN_DB_DRIVER` and its companions. Its data lives in the `stashbin-db-data` volume, so it survives `down` and version changes like the SQLite one does; `reset` and `clean` take it away. The database is created empty — StashBin makes its own tables on first use.
+
 ## The commands
 
 | Command | Effect |
 |---|---|
-| `up [version] [server]` | Builds and starts. Default: `8.4 apache` |
+| `up [version] [server]` | Builds and starts. Default: `8.4 apache` (`DB=mariadb` for a database server) |
 | `user add\|passwd\|del <name>` | Manages the accounts of the running instance |
 | `user list` | Lists the accounts |
 | `logs [-f]` | Container logs |
@@ -91,6 +99,8 @@ TEST_PORT=9099 ./containers/stashbin.sh test
 
 **`AUTH`.** `AUTH=0 ./containers/stashbin.sh up` starts an instance without authentication (default: `1`). The variable only concerns `up`: `test` forces authentication on, since the journey it replays starts with a sign-in.
 
+**`DB`.** `DB=mariadb` starts a MariaDB server beside the instance (default: `sqlite`, which needs nothing). It applies to `test` as well, which then replays the whole journey against it.
+
 **PHP 8.6 is not out** (final expected on 19 November 2026): `up 8.6` uses the `php:8.6-rc` image. The script does the translation, there is nothing to adjust.
 
 ## The two images
@@ -100,7 +110,7 @@ TEST_PORT=9099 ./containers/stashbin.sh test
 | `Containerfile.apache` | Apache + mod_php, a single process | `php:<version>-apache` |
 | `Containerfile.nginx` | nginx + PHP-FPM in one container | `php:<version>-fpm` |
 
-Both take the version as a build argument (`--build-arg PHP_TAG=…`), serve `public/` as the web root, and put the SQLite database in `/var/lib/stashbin` (a volume), outside the code.
+Both take the version as a build argument (`--build-arg PHP_TAG=…`), serve `public/` as the web root, and put the SQLite database in `/var/lib/stashbin` (a volume), outside the code. Both also carry `pdo_mysql`, which the official images do not build in, beside the `pdo_sqlite` they do.
 
 Two details are worth pointing out, because each costs an hour of debugging when discovered the hard way:
 

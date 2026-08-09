@@ -1,6 +1,6 @@
 # StashBin
 
-Partage de secrets chiffrés de bout en bout. PHP + SQLite côté serveur, WebCrypto côté navigateur. **Aucun framework, aucune dépendance Composer** — c'est un parti pris, pas un manque : n'en introduisez pas.
+Partage de secrets chiffrés de bout en bout. PHP + SQLite (ou MariaDB) côté serveur, WebCrypto côté navigateur. **Aucun framework, aucune dépendance Composer** — c'est un parti pris, pas un manque : n'en introduisez pas.
 
 ## Invariants de sécurité
 
@@ -13,19 +13,22 @@ Ce sont les promesses du produit. Une modification qui en casse une est un bug, 
 - **Un secret à usage unique se revendique, il ne se vérifie pas.** `claim_burned()` écrit sous condition et lit le nombre de lignes modifiées : c'est le seul point atomique d'une requête. Servir puis détruire laisse une fenêtre large d'une requête PHP entière — vingt lecteurs simultanés en ont tiré dix-sept copies. Ne remettez jamais un contrôle avant le service à la place de l'écriture conditionnelle.
 - **Rien ne décrit le contenu d'un secret, pas même une étiquette.** L'inventaire ne connaît que l'identifiant, les dates et les accès. Un titre en clair a été écrit puis retiré : il rendait la liste plus lisible au prix de la seule métadonnée parlante que le serveur aurait pu lire. N'en réintroduisez pas sans que ce soit un choix assumé et écrit.
 - **L'inventaire est cloisonné par compte.** La propriété se vérifie dans la requête SQL, pas avant : un identifiant qui n'est pas à vous ne correspond simplement à rien.
+- **Le moteur de stockage est interchangeable, la promesse ne l'est pas.** SQLite par défaut, MariaDB si on le configure ; dans les deux cas le serveur ne stocke qu'un payload opaque, les identifiants restent sensibles à la casse (collation binaire imposée à la création des tables — sous une collation qui ignore la casse, `aB3` et `Ab3` deviennent le même secret, donc un lecteur reçoit le chiffré d'un autre), et StashBin crée ses tables, jamais la base.
 - **Le document root est `public/`.** Le reste du dépôt ne doit jamais être servi.
 - **HTTPS est une condition de fonctionnement, pas un durcissement.** `crypto.subtle` n'existe que dans un contexte sécurisé (HTTPS ou origine loopback) : servi en HTTP simple sur un nom d'hôte ordinaire, StashBin ne peut rien chiffrer du tout.
 
 ## Commandes
 
 ```bash
-./tests/run.sh                    # 263 tests, quelques minutes — à lancer avant de valider
+./tests/run.sh                    # 278 tests, quelques minutes — à lancer avant de valider
 ./tests/run.sh --no-browser       # sans Chromium, plus rapide pendant l'itération
+./tests/run.sh --db mariadb       # les mêmes suites contre MariaDB
 ./tests/run.sh --matrix           # suites PHP sur les huit combinaisons version × serveur
 
 ./containers/stashbin.sh up       # instance de développement (PHP 8.4 + Apache)
 ./containers/stashbin.sh up 8.6 nginx
 AUTH=0 ./containers/stashbin.sh up  # instance ouverte, sans authentification
+DB=mariadb ./containers/stashbin.sh up  # avec un serveur MariaDB à côté
 ./containers/stashbin.sh user add alice
 ./containers/stashbin.sh down
 ./containers/stashbin.sh clean    # tout retirer une fois terminé
@@ -68,24 +71,33 @@ Chacun a coûté du temps une fois ; ils sont documentés pour ne pas le refaire
 - **`json_extract()` lève une erreur sur une chaîne vide, pas un `NULL`.** Le payload d'une pierre tombale est effacé (`''`), donc toute lecture JSON de `payload` doit passer par `CASE WHEN json_valid(payload) THEN …`. Sans ce garde-fou, l'inventaire tombe en erreur fatale dès qu'une entrée est terminée — et une base neuve n'en a aucune, donc ça se voit tard.
 - **L'expiration choisie se saisit en deux champs, `date` et `time`.** Un `datetime-local` unique donne un calendrier à Firefox et rien pour l'heure, qu'il faut taper. Les deux champs partent d'aujourd'hui à la minute suivante, et `syncExpiry()` les rafraîchit dès que l'instant qu'ils portent est passé : c'est ce qui évite qu'un formulaire laissé ouvert propose un moment révolu.
 - **L'opcache du conteneur revalide toutes les 2 secondes.** Une mutation suivie immédiatement de son test rejoue l'ancien code : l'effet apparaît au tour suivant, et une mutation bien détectée passe pour ignorée — pendant que la précédente fait échouer un test sans rapport. Laissez passer quelques secondes entre l'écriture et l'exécution.
+- **Le SQL portable s'écrit en trois morceaux, pas en deux dialectes.** Ce que les moteurs épellent différemment vient de `src/db/<pilote>.php` par `sql()` : `json_bool` (lire un booléen JSON), `integer` (forcer une comparaison numérique), `sequence` (l'ordre d'insertion — `rowid` chez SQLite, une colonne `seq` chez MariaDB, qui n'a pas d'équivalent gratuit). Ces fragments sont interpolés dans la requête : rien qui vienne d'une requête HTTP n'a le droit d'y entrer.
+- **`reads` est un mot réservé de MariaDB et de MySQL.** `COUNT(r.id) AS reads` marchait sous SQLite et sortait une erreur de syntaxe ailleurs ; l'alias est `read_count`. Une requête ne vaut pas qu'on se mette à échapper les identifiants.
+- **Le niveau d'isolement par défaut d'InnoDB fait poser des verrous d'intervalle sur ce qu'une lecture parcourt.** Le journal des accès s'écrit par un `INSERT … SELECT` qui compte les lignes qu'il s'apprête à ajouter : deux lecteurs simultanés tiennent chacun un verrou partagé sur le même intervalle et veulent chacun y insérer — interblocage, signalé à l'un d'eux comme un échec de lecture de l'auto-incrément (erreur 1467, qui ne dit rien de sa cause). Le pilote MySQL demande `READ COMMITTED`, qui est aussi le comportement de SQLite en WAL. Ne le retirez pas : le test des vingt lecteurs simultanés le rattrape, mais après une demi-heure de recherche.
+- **PDO cite les paramètres quand c'est lui qui prépare la requête.** Un `LIMIT ?` cité est une erreur de syntaxe côté MySQL : le pilote coupe `ATTR_EMULATE_PREPARES`, et `secrets.php` lie de toute façon son plafond en `PARAM_INT`. La même option rend les entiers natifs au retour, ce dont `api.php` dépend pour comparer `expires` à `time()`.
+- **`JSON_EXTRACT()` de MySQL rend du JSON, pas une valeur SQL.** Un booléen revient en texte `true`, là où SQLite rend `1` — et le drapeau `pwd` du payload a été écrit tantôt en booléen, tantôt en entier. Le fragment `json_bool` du pilote MySQL accepte les deux.
+- **La base MariaDB doit exister avant le démarrage ; les tables, non.** StashBin les crée, mais créer une base demande un privilège qu'une application n'a pas à détenir. `tests/run.sh --db mariadb` recrée la base vide entre chaque suite, exactement comme il efface le volume SQLite.
 - **Ne restaurez jamais un fichier par `git checkout` pendant une mutation de test** tant que le travail n'est pas commité : les fichiers nouveaux ne sont pas connus de git, et les fichiers modifiés reviennent à `HEAD`, pas à l'état d'avant la mutation. Commitez d'abord, mutez ensuite.
 
 ## Organisation
 
 ```
 config.php          valeurs littérales : authentification, expirations, taille
-                    max, chemin de la base, langue de repli ; surcharges
+                    max, base de données, langue de repli ; surcharges
                     d'environnement dans env_overrides() de src/bootstrap.php
 public/             document root — pages, api.php, assets/
   secrets.php         inventaire du créateur : états, journal des accès
   assets/stashbin.js  toute la cryptographie navigateur
 src/bootstrap.php   base, sessions, CSRF, langue, helpers ; tout le code partagé
+src/db/             un fichier par moteur offert ; sqlite.php documente le contrat
 src/lang/           un fichier par langue offerte ; fr.php fait référence
 bin/user.php        gestion des comptes en CLI
 containers/         banc d'essai PHP 8.3→8.6 × Apache/nginx
 tests/              jeu de test — voir tests/README.md
 data/               base SQLite (ignorée par git)
 ```
+
+Deux répertoires font exception à la règle du fichier unique, et pour la même raison : `src/lang/` et `src/db/` n'ajoutent pas du code partagé, ils déclinent un contrat que `src/bootstrap.php` connaît seul. Ajouter une langue ou un moteur, c'est y déposer un fichier, sans toucher au code.
 
 `src/bootstrap.php` est volontairement le seul fichier partagé : pas d'autoloader, pas de hiérarchie de classes. Ajoutez-y une fonction plutôt que de créer un fichier pour trois lignes.
 
@@ -101,6 +113,10 @@ Toute modification du comportement doit venir avec un test. Le socle est `tests/
 
 Les suites affirment parfois des libellés d'interface **en français** : `tests/lib.php` pose `Accept-Language: fr` sur chaque requête et le contexte Chromium fixe `locale: 'fr-FR'`, pour que ces libellés ne dépendent pas du repli du serveur. `new Http($base, language: null)` sert à éprouver le repli lui-même.
 - De la cryptographie ou un parcours d'interface → `tests/browser.test.mjs`
+
+Les suites qui passent par HTTP lisent la base réelle de l'instance : leur SQL doit donc être compris par les deux moteurs (`INSERT OR REPLACE` et `PRAGMA` n'en font pas partie ; `table_columns()` de `tests/lib.php` remplace le second). `unit.test.php` fait exception et garde son fichier SQLite : il inspecte le schéma par `PRAGMA`, et neutralise pour cela les variables `STASHBIN_DB_*` de l'instance. Ce qui ne dépend d'aucun moteur — la forme du réglage `db`, le chargement d'un pilote, les fragments SQL — s'y teste sans base du tout.
+
+Toute modification touchant au stockage se valide sur les deux moteurs : `./tests/run.sh` puis `./tests/run.sh --db mariadb`.
 
 Les suites PHP tournent **dans le conteneur applicatif** : elles peuvent donc confronter la réponse HTTP au contenu réel de la base, ce qui est le seul moyen de vérifier qu'un jeton est bien stocké haché ou qu'un payload n'est jamais déchiffré.
 

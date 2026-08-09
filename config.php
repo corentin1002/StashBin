@@ -2,18 +2,43 @@
 // StashBin configuration. Every setting is a literal value: to change anything,
 // write the value you want here, and nothing else.
 //
-// Three settings also accept an environment variable, which is indispensable in
+// Some settings also accept an environment variable, which is indispensable in
 // a container where this file is mounted read-only:
 //
 //   STASHBIN_DB      path to the SQLite database
 //   STASHBIN_AUTH    "0", "false", "off" or "no" disable authentication;
 //                    any other value requires it
 //   STASHBIN_LOCALE  fallback language
+//   STASHBIN_TRUST_PROXY   same spelling as STASHBIN_AUTH
+//
+//   STASHBIN_DB_DRIVER, _HOST, _PORT, _NAME, _USER, _PASS, _SOCKET, _CHARSET
+//                    the "db" setting below, one connection detail per
+//                    variable; naming any of them settles its shape
 //
 // The variable wins over the file when it is set and non-empty. Absent, it
 // changes nothing: this file decides.
 return [
-    // Path to the SQLite database (the directory must be writable by PHP).
+    // Where the secrets are stored. A path means SQLite and that file (the
+    // directory must be writable by PHP): no server to run, and nothing else
+    // to decide.
+    //
+    // An array means a database engine of your own choosing. "driver" is a
+    // file name in src/db/ — "sqlite", or "mysql", which "mariadb" is another
+    // name for. StashBin creates its tables on first use, but never the
+    // database itself: create it, and an account allowed to write to it,
+    // before starting.
+    //
+    //   'db' => [
+    //       'driver' => 'mariadb',
+    //       'host'   => '127.0.0.1',   // or 'socket' => '/run/mysqld/mysqld.sock'
+    //       'port'   => 3306,
+    //       'name'   => 'stashbin',
+    //       'user'   => 'stashbin',
+    //       'pass'   => '',
+    //   ],
+    //
+    // Nothing else changes: what is stored stays a payload the server cannot
+    // read, and the key still never leaves the browser.
     'db' => __DIR__ . '/data/stashbin.sqlite',
 
     // Authentication required to create and delete a secret. This is how

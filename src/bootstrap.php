@@ -19,9 +19,33 @@ function config(): array
 // without starting a new process.
 function env_overrides(array $config): array
 {
+    // The setting used to be nothing but a path, and still may be: the variable
+    // keeps that meaning. On a database reached over the network it is simply
+    // not the setting that decides anything.
     $db = getenv('STASHBIN_DB');
     if (is_string($db) && $db !== '') {
-        $config['db'] = $db;
+        $config['db'] = is_array($config['db']) ? ['path' => $db] + $config['db'] : $db;
+    }
+
+    // One variable per connection detail, because a container is configured
+    // with variables and config.php is mounted read-only. Naming any of them
+    // settles the shape of the setting, whatever the file holds.
+    $connection = [
+        'STASHBIN_DB_DRIVER'  => 'driver',
+        'STASHBIN_DB_HOST'    => 'host',
+        'STASHBIN_DB_PORT'    => 'port',
+        'STASHBIN_DB_NAME'    => 'name',
+        'STASHBIN_DB_USER'    => 'user',
+        'STASHBIN_DB_PASS'    => 'pass',
+        'STASHBIN_DB_SOCKET'  => 'socket',
+        'STASHBIN_DB_CHARSET' => 'charset',
+    ];
+    foreach ($connection as $variable => $key) {
+        $value = getenv($variable);
+        if (is_string($value) && $value !== '') {
+            $config['db'] = db_settings($config['db']);
+            $config['db'][$key] = $value;
+        }
     }
 
     // An explicit comparison rather than a "?:": "0" is falsy in PHP, and that
@@ -50,73 +74,84 @@ function db(): PDO
 {
     static $pdo = null;
     if ($pdo === null) {
-        $path = config()['db'];
-        $dir = dirname($path);
-        if (!is_dir($dir)) {
-            mkdir($dir, 0770, true);
-        }
-        $pdo = new PDO('sqlite:' . $path, null, null, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        ]);
-        $pdo->exec('PRAGMA journal_mode = WAL');
-        $pdo->exec('PRAGMA foreign_keys = ON');
+        $pdo = db_driver()['connect'](db_settings(config()['db']));
         migrate_schema($pdo);
     }
     return $pdo;
 }
 
 // Creates what is missing, on an empty database as well as on one that predates
-// the creator's inventory. There is no migration table: SQLite describes its own
-// schema, which is a more reliable answer to "which version is this" than a
+// the creator's inventory. There is no migration table: a database describes its
+// own schema, which is a more reliable answer to "which version is this" than a
 // number we would have to remember to bump.
 function migrate_schema(PDO $pdo): void
 {
-    $pdo->exec('CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL UNIQUE,
-        pass_hash TEXT NOT NULL,
-        created INTEGER NOT NULL
-    )');
-    // A secret whose owner's account is deleted keeps working: the links handed
-    // out are still valid, they simply stop appearing in anyone's list.
-    $pdo->exec('CREATE TABLE IF NOT EXISTS pastes (
-        id TEXT PRIMARY KEY,
-        payload TEXT NOT NULL,
-        burn INTEGER NOT NULL DEFAULT 0,
-        delete_hash TEXT NOT NULL,
-        created INTEGER NOT NULL,
-        expires INTEGER,
-        owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        gone INTEGER,
-        gone_cause TEXT
-    )');
-    // One row per access to a secret's payload. Deleting the secret for good
-    // takes its log with it.
-    $pdo->exec('CREATE TABLE IF NOT EXISTS paste_reads (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        paste_id TEXT NOT NULL REFERENCES pastes(id) ON DELETE CASCADE,
-        at INTEGER NOT NULL,
-        outcome TEXT NOT NULL,
-        ip TEXT,
-        agent TEXT
-    )');
-    $pdo->exec('CREATE INDEX IF NOT EXISTS paste_reads_by_paste ON paste_reads (paste_id, at)');
+    db_driver()['migrate']($pdo);
+}
 
-    // Columns added after the first version. SQLite only allows ADD COLUMN with
-    // a NULL default when a REFERENCES clause is involved, which is what these
-    // all are.
-    $existing = array_column($pdo->query('PRAGMA table_info(pastes)')->fetchAll(), 'name');
-    $added = [
-        'owner_id'   => 'INTEGER REFERENCES users(id) ON DELETE SET NULL',
-        'gone'       => 'INTEGER',
-        'gone_cause' => 'TEXT',
-    ];
-    foreach ($added as $column => $definition) {
-        if (!in_array($column, $existing, true)) {
-            $pdo->exec("ALTER TABLE pastes ADD COLUMN $column $definition");
+// The "db" setting in the shape the drivers expect. A bare string means SQLite
+// and the file it names: that is how the setting has always been written, and
+// nothing obliges an instance that is happy with it to write anything else.
+function db_settings(mixed $setting): array
+{
+    $db = is_array($setting) ? $setting : ['path' => (string) $setting];
+    $db['driver'] = strtolower(trim((string) ($db['driver'] ?? 'sqlite')));
+    return $db;
+}
+
+// The databases on offer: one file per engine in src/db/. Adding one means
+// dropping a file there, without touching the code — the same arrangement as
+// src/lang/, for the same reason.
+function available_db_drivers(): array
+{
+    static $drivers = null;
+    if ($drivers === null) {
+        $drivers = [];
+        foreach (glob(__DIR__ . '/db/*.php') ?: [] as $file) {
+            $drivers[] = basename($file, '.php');
         }
+        sort($drivers);
     }
+    return $drivers;
+}
+
+// MariaDB and MySQL are one wire protocol, one PDO driver and one dialect: both
+// names lead to the same file rather than to a copy of it kept in step by hand.
+function db_driver_file(string $name): string
+{
+    return $name === 'mariadb' ? 'mysql' : $name;
+}
+
+// The name becomes a file path, so it is only read once it is known to be one of
+// the files that are there. An unknown engine stops the request outright: it can
+// only be a typo, and carrying on would mean starting with no storage at all.
+function load_db_driver(string $name): array
+{
+    $file = db_driver_file($name);
+    if (!in_array($file, available_db_drivers(), true)) {
+        throw new RuntimeException(
+            "Unknown database driver \"$name\". Available: " . implode(', ', available_db_drivers())
+        );
+    }
+    return require __DIR__ . '/db/' . $file . '.php';
+}
+
+function db_driver(): array
+{
+    static $driver = null;
+    if ($driver === null) {
+        $driver = load_db_driver(db_settings(config()['db'])['driver']);
+    }
+    return $driver;
+}
+
+// A piece of SQL the engines spell differently, taken from src/db/<driver>.php.
+// It is interpolated into a query rather than bound to it, so it may only ever
+// come from those files: nothing derived from a request has any business here.
+function sql(string $name, string ...$arguments): string
+{
+    $fragment = db_driver()[$name] ?? throw new RuntimeException("No \"$name\" fragment in this driver.");
+    return is_callable($fragment) ? $fragment(...$arguments) : (string) $fragment;
 }
 
 // Validates an expiry instant chosen by the creator, given as a Unix timestamp
@@ -215,7 +250,7 @@ function record_read(string $id, string $outcome): void
         'INSERT INTO paste_reads (paste_id, at, outcome, ip, agent)
          SELECT id, ?, ?, ?, ? FROM pastes
           WHERE id = ? AND owner_id IS NOT NULL
-            AND (SELECT COUNT(*) FROM paste_reads WHERE paste_id = ?) < CAST(? AS INTEGER)'
+            AND (SELECT COUNT(*) FROM paste_reads WHERE paste_id = ?) < ' . sql('integer', '?')
     )->execute([time(), $outcome, client_ip(), client_agent(), $id, $id, config()['access_log_max']]);
 }
 
