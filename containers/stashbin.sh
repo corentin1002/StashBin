@@ -17,6 +17,19 @@ TEST_VOLUME=stashbin-selftest-data
 IMAGE_PREFIX=stashbin        # images built here: stashbin:<version>-<server>
 PORT="${PORT:-8081}"
 AUTH="${AUTH:-1}"            # AUTH=0: open instance, without authentication
+DB="${DB:-sqlite}"           # DB=mariadb: a database server beside the instance
+
+# Only used when DB is not sqlite. The application then reaches the server by
+# name over a network of our own, and its data lives in a volume like the
+# SQLite file does.
+NET=stashbin-net
+DB_NAME=stashbin-db
+DB_VOLUME=stashbin-db-data
+DB_IMAGE=docker.io/library/mariadb:11
+DB_SCHEMA=stashbin
+DB_USER=stashbin
+DB_PASS=stashbin
+DB_ROOT=rootpassword
 
 RED=$'\e[31m'; GREEN=$'\e[32m'; YELLOW=$'\e[33m'; BOLD=$'\e[1m'; OFF=$'\e[0m'
 info() { printf '%s\n' "$*"; }
@@ -38,6 +51,54 @@ check_args() {
         || die "Unknown PHP version: \"$1\". Expected: ${VERSIONS[*]}"
     contains "$2" "${SERVERS[@]}" \
         || die "Unknown server: \"$2\". Expected: ${SERVERS[*]}"
+    contains "$DB" sqlite mariadb \
+        || die "Unknown database: \"$DB\". Expected: sqlite mariadb"
+}
+
+# Starts the database server, if one is called for, and waits until it answers.
+# The schema is never created here: an empty database is all StashBin asks for,
+# and it makes its own tables on first use.
+ensure_db() {
+    # Written with "if" rather than "&&": under "set -e", a list ending on a
+    # false test is enough to bring the whole script down.
+    if [[ $DB == sqlite ]]; then
+        return 0
+    fi
+    podman network exists "$NET" >/dev/null 2>&1 || podman network create "$NET" >/dev/null
+    if podman ps --format '{{.Names}}' | grep -qx "$DB_NAME"; then
+        return 0
+    fi
+
+    podman rm -f "$DB_NAME" >/dev/null 2>&1 || true
+    podman run -d --name "$DB_NAME" --network "$NET" \
+        -e "MARIADB_ROOT_PASSWORD=$DB_ROOT" \
+        -e "MARIADB_DATABASE=$DB_SCHEMA" \
+        -e "MARIADB_USER=$DB_USER" \
+        -e "MARIADB_PASSWORD=$DB_PASS" \
+        -v "$DB_VOLUME:/var/lib/mysql:z" \
+        "$DB_IMAGE" >/dev/null || die "Could not start $DB_IMAGE."
+
+    local i
+    for i in $(seq 90); do
+        podman exec "$DB_NAME" mariadb -u root -p"$DB_ROOT" -e 'SELECT 1' >/dev/null 2>&1 && return 0
+        sleep 1
+    done
+    podman logs --tail 20 "$DB_NAME" >&2
+    die "The database is not answering."
+}
+
+# How the application is told to reach it. Nothing to say for SQLite, which is
+# a file the image already points at.
+db_args() {
+    if [[ $DB == sqlite ]]; then
+        return 0
+    fi
+    printf '%s\n' --network "$NET" \
+        -e STASHBIN_DB_DRIVER=mariadb \
+        -e "STASHBIN_DB_HOST=$DB_NAME" \
+        -e "STASHBIN_DB_NAME=$DB_SCHEMA" \
+        -e "STASHBIN_DB_USER=$DB_USER" \
+        -e "STASHBIN_DB_PASS=$DB_PASS"
 }
 
 port_busy() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && exec 3>&- && return 0 || return 1; }
@@ -62,9 +123,12 @@ build() {
 # Starts a container and waits until it really answers over HTTP.
 start() {
     local image=$1 name=$2 port=$3 volume=$4 auth=${5:-1}
+    ensure_db
+    local extra=(); mapfile -t extra < <(db_args)
     podman rm -f "$name" >/dev/null 2>&1 || true
     podman run -d --name "$name" -p "127.0.0.1:$port:80" \
         -e "STASHBIN_AUTH=$auth" \
+        ${extra[@]+"${extra[@]}"} \
         -v "$REPO:/var/www/stashbin:ro,z" \
         -v "$volume:/var/lib/stashbin:z" \
         "$image" >/dev/null
@@ -94,7 +158,7 @@ cmd_up() {
     start "$image" "$NAME" "$PORT" "$VOLUME" "$AUTH" || die "Could not start."
 
     local real; real=$(podman exec "$NAME" php -r 'echo PHP_VERSION;')
-    ok "StashBin is running: PHP $real + $server"
+    ok "StashBin is running: PHP $real + $server + $DB"
     info ""
     info "  ${BOLD}http://127.0.0.1:$PORT/${OFF}"
     info ""
@@ -137,6 +201,9 @@ cmd_user() {
 cmd_logs() { podman logs "$@" "$NAME"; }
 
 cmd_down() {
+    # The database, if there is one, goes with the instance it serves; its
+    # volume stays, exactly as the SQLite one does.
+    podman rm -f "$DB_NAME" >/dev/null 2>&1 || true
     if podman rm -f "$NAME" >/dev/null 2>&1; then
         ok "Instance stopped."
         info "To remove everything (volumes and images): $0 clean"
@@ -148,6 +215,7 @@ cmd_down() {
 cmd_reset() {
     cmd_down >/dev/null 2>&1 || true
     podman volume rm -f "$VOLUME" >/dev/null 2>&1 || true
+    podman volume rm -f "$DB_VOLUME" >/dev/null 2>&1 || true
     ok "Database wiped (accounts and secrets)."
 }
 
@@ -166,15 +234,19 @@ cmd_clean() {
     # first, so that the report only announces removals that really happened.
     local removed=0
 
-    for c in "$NAME" "$TEST_NAME"; do
+    for c in "$NAME" "$TEST_NAME" "$DB_NAME"; do
         podman container exists "$c" 2>/dev/null || continue
         podman rm -f "$c" >/dev/null 2>&1 && { info "container $c"; removed=1; }
     done
 
-    for v in "$VOLUME" "$TEST_VOLUME"; do
+    for v in "$VOLUME" "$TEST_VOLUME" "$DB_VOLUME"; do
         podman volume exists "$v" 2>/dev/null || continue
         podman volume rm -f "$v" >/dev/null 2>&1 && { info "volume $v"; removed=1; }
     done
+
+    if podman network exists "$NET" 2>/dev/null; then
+        podman network rm -f "$NET" >/dev/null 2>&1 && { info "network $NET"; removed=1; }
+    fi
 
     local images
     images=$(podman images --format '{{.Repository}}:{{.Tag}}' \
@@ -330,7 +402,8 @@ ${BOLD}StashBin — multi-version test bench${OFF}
 
 Versions: ${VERSIONS[*]}        Servers: ${SERVERS[*]}
 Variables: PORT (default 8081), TEST_PORT (default 8099),
-           AUTH (default 1; "AUTH=0 $0 up" opens creation to everyone)
+           AUTH (default 1; "AUTH=0 $0 up" opens creation to everyone),
+           DB (default sqlite; "DB=mariadb $0 up" runs a database server beside it)
 EOF
 }
 

@@ -121,6 +121,21 @@ function summary(string $suite): int
     return 1;
 }
 
+// The columns of a table, whichever engine holds it. Every engine has its own
+// catalogue — PRAGMA here, information_schema there — but they all describe the
+// result of a query, and a query returning no rows still describes its columns.
+//
+// @return list<string>
+function table_columns(PDO $pdo, string $table): array
+{
+    $stmt = $pdo->query("SELECT * FROM $table LIMIT 0");
+    $columns = [];
+    for ($i = 0; $i < $stmt->columnCount(); $i++) {
+        $columns[] = $stmt->getColumnMeta($i)['name'];
+    }
+    return $columns;
+}
+
 // ---------------------------------------------------------------------------
 // Minimal HTTP client, with session cookie handling.
 // ---------------------------------------------------------------------------

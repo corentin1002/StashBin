@@ -168,7 +168,7 @@ test('the payload is stored as-is, with no decryption possible', function () use
 });
 
 test('no column keeps a key or a password', function () {
-    $cols = array_column(db()->query('PRAGMA table_info(pastes)')->fetchAll(), 'name');
+    $cols = table_columns(db(), 'pastes');
     foreach (['key', 'urlkey', 'password', 'passphrase', 'plaintext'] as $forbidden) {
         assert_true(!in_array($forbidden, $cols, true), "\"$forbidden\" column absent from the schema");
     }
@@ -286,6 +286,25 @@ test('the inventory never puts a ciphertext on the page', function () use ($http
     assert_contains('Mot de passe', $page, 'though the flag it carries is read');
 });
 
+test('the password badge is read whether the flag is a number or a boolean', function () use ($http, $token) {
+    // The payload is opaque to the server: it stores what the caller sent and
+    // gives it back unchanged. The browser writes 1 or 0, another client may
+    // well write true — the bench's own smoke journey does — and the flag is
+    // lifted out in SQL, where every engine reads a JSON boolean its own way.
+    // MySQL returns the text "true" where SQLite returns 1: read literally,
+    // the badge silently disappears for whoever wrote a boolean.
+    // Counted rather than looked for: the inventory already holds secrets from
+    // the tests above, so only one more badge than a moment ago proves that
+    // this secret earned its own.
+    $badges = static fn (): int => substr_count($http->get('/secrets.php')->body, '>Mot de passe<');
+    foreach ([true, 1] as $flag) {
+        $before = $badges();
+        $http->createSecret(['payload' => ['v' => 1, 'iv' => 'AAAA', 'salt' => 'BBBB', 'iter' => 310000,
+                                           'pwd' => $flag, 'ct' => 'Q0lQSEVS']], $token);
+        assert_eq($before + 1, $badges(), 'badge shown for pwd = ' . var_export($flag, true));
+    }
+});
+
 test('the inventory refuses a write without a CSRF token', function () use ($http, $token) {
     // The session cookie is SameSite=Lax, so another site can drive a POST at
     // top level: the token is what stops it.
@@ -329,7 +348,11 @@ test('the username is escaped when displayed', function () use ($base) {
     // An account with a booby-trapped name must not inject script into index.php.
     $name = '<img src=x onerror=alert(1)>';
     $hash = password_hash('testpassword', PASSWORD_DEFAULT);
-    db()->prepare('INSERT OR REPLACE INTO users (username, pass_hash, created) VALUES (?,?,?)')
+    // Removed then inserted rather than replaced in one go: "INSERT OR REPLACE"
+    // is SQLite's own spelling, and this suite runs against whichever engine
+    // the instance was started with.
+    db()->prepare('DELETE FROM users WHERE username = ?')->execute([$name]);
+    db()->prepare('INSERT INTO users (username, pass_hash, created) VALUES (?,?,?)')
         ->execute([$name, $hash, time()]);
 
     $c = new Http($base);

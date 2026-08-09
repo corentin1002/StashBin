@@ -4,7 +4,7 @@
 
 > Partage de secrets chiffrés de bout en bout — la création est réservée aux utilisateurs autorisés (ou ouverte à tous, au choix), la lecture est ouverte à quiconque possède le lien.
 
-Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une différence clé : **seuls les comptes authentifiés peuvent créer des secrets**. Il ne s'agit pas d'un fork : le code est une réécriture complète et indépendante, sans aucune ligne reprise du projet d'origine. Aucun framework, aucune dépendance Composer — du PHP, SQLite et le WebCrypto du navigateur.
+Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une différence clé : **seuls les comptes authentifiés peuvent créer des secrets**. Il ne s'agit pas d'un fork : le code est une réécriture complète et indépendante, sans aucune ligne reprise du projet d'origine. Aucun framework, aucune dépendance Composer — du PHP, SQLite (ou MariaDB) et le WebCrypto du navigateur.
 
 ---
 
@@ -18,6 +18,7 @@ Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une dif
 - **Destruction après lecture** — avec écran de confirmation avant de consommer le secret.
 - **Lien de suppression** — remis au créateur, utilisable uniquement par un utilisateur connecté.
 - **Interface multilingue** — français et anglais, choisis d'après la langue du navigateur ; ajouter une langue, c'est déposer un fichier dans `src/lang/`.
+- **La base de votre choix** — SQLite par défaut, sans rien à installer ni à faire tourner ; MariaDB (ou MySQL) quand vous en avez déjà une. Ajouter un moteur, c'est déposer un fichier dans `src/db/`.
 - **Utilisable sur téléphone** — une feuille de style, aucun framework : la mise en page se replie jusqu'à un écran de 360 px, les champs restent à 16 px pour que Safari iOS ne zoome pas à la mise au point, et les cibles tactiles atteignent 44 px.
 - **Un inventaire pour chaque créateur** — chaque secret créé, désigné par l'identifiant que porte son lien, avec son état (jamais consulté, consulté *n* fois, détruit après lecture, supprimé, expiré), le journal des accès reçus, un bouton de suppression tant qu'il vit, et un bouton unique pour vider d'un coup toutes les entrées terminées. Les dates s'affichent dans votre fuseau horaire. Les secrets ne sont jamais consultables depuis cette page : leur clé n'a pas quitté le navigateur qui les a créés.
 
@@ -42,7 +43,7 @@ Inspiré de [PrivateBin](https://github.com/PrivateBin/PrivateBin), avec une dif
 | Chiffrement | AES-256-GCM, IV 96 bits aléatoire |
 | Dérivation de clé | PBKDF2-SHA256, 310 000 itérations, sel 128 bits |
 | Clé d'URL | 256 bits aléatoires, encodés base64url dans le fragment `#` |
-| Stockage | SQLite : payload chiffré + métadonnées (expiration, burn) |
+| Stockage | SQLite ou MariaDB : payload chiffré + métadonnées (expiration, burn) |
 
 ## 🚀 Démarrage rapide
 
@@ -59,6 +60,7 @@ Le code est monté depuis le projet : toute modification est visible immédiatem
 
 ```bash
 ./containers/stashbin.sh up 8.5 nginx  # autre version, autre serveur
+DB=mariadb ./containers/stashbin.sh up # sur un serveur MariaDB, démarré à côté
 ./containers/stashbin.sh down          # arrêter
 ./containers/stashbin.sh reset         # repartir de zéro
 ./containers/stashbin.sh clean         # tout retirer une fois terminé
@@ -69,7 +71,8 @@ Le code est monté depuis le projet : toute modification est visible immédiatem
 ## 🧪 Tests
 
 ```bash
-./tests/run.sh          # 263 tests, quelques minutes
+./tests/run.sh              # 278 tests, quelques minutes
+./tests/run.sh --db mariadb # les mêmes suites contre MariaDB
 ./tests/run.sh --help   # options : version, serveur, matrice complète…
 ```
 
@@ -77,9 +80,9 @@ Le lanceur démarre une instance neuve, joue les cinq suites et détruit tout : 
 
 | Suite | Tests | Portée |
 |---|--:|---|
-| Unitaire | 81 | Fonctions de `src/bootstrap.php` : échappement, configuration, surcharges d'environnement, schéma, purge, CSRF, langue |
-| API | 60 | Règles métier via HTTP : authentification, validation, durées de vie, destruction après lecture, suppression, codes d'erreur |
-| Sécurité | 38 | Rien hors de `public/`, en-têtes, fixation de session, stockage haché, injections, choix de la langue |
+| Unitaire | 91 | Fonctions de `src/bootstrap.php` : échappement, configuration, surcharges d'environnement, choix du moteur, schéma, purge, CSRF, langue |
+| API | 64 | Règles métier via HTTP : stockage, authentification, validation, durées de vie, destruction après lecture, suppression, codes d'erreur |
+| Sécurité | 39 | Rien hors de `public/`, en-têtes, fixation de session, stockage haché, injections, choix de la langue |
 | Instance ouverte | 22 | Second conteneur sans authentification : création libre, CSRF toujours exigée, garanties inchangées |
 | Navigateur | 62 | Chromium réel : cryptographie de bout en bout, parcours d'interface, langue servie |
 
@@ -87,7 +90,7 @@ Les tests navigateur exercent la partie que rien d'autre ne couvre — `deriveKe
 
 ### Avec PHP seul
 
-Prérequis : PHP ≥ 8.1 avec `pdo_sqlite` (`php-cli` + `php-pdo` sur Fedora, `php-cli` + `php-sqlite3` sur Debian/Ubuntu). Aucune dépendance Composer.
+Prérequis : PHP ≥ 8.1 avec `pdo_sqlite` (`php-cli` + `php-pdo` sur Fedora, `php-cli` + `php-sqlite3` sur Debian/Ubuntu), ou `pdo_mysql` pour parler à MariaDB. Aucune dépendance Composer.
 
 ```bash
 php bin/user.php add alice          # créer un compte autorisé
@@ -114,7 +117,7 @@ Un détail à connaître en montant depuis PHP 8.3 : à partir de 8.4, le coût 
 > 1. Le document root doit pointer sur **`public/`**, jamais sur la racine du projet (sinon `config.php` et la base SQLite seraient exposés).
 > 2. Servez en **HTTPS** : la clé de déchiffrement transite dans l'URL côté client.
 
-Le dossier `data/` doit être accessible en écriture par l'utilisateur PHP (`www-data`, `apache`…).
+Le dossier `data/` doit être accessible en écriture par l'utilisateur PHP (`www-data`, `apache`…) — avec SQLite, qui est le défaut ; sur un serveur de base de données, il n'y a rien à y écrire.
 
 <details>
 <summary><strong>Exemple Apache</strong></summary>
@@ -189,7 +192,7 @@ Tout se passe dans `config.php`, qui ne contient que des valeurs littérales : �
 
 | Réglage | Défaut | Effet |
 |---|---|---|
-| `db` | `data/stashbin.sqlite` | Chemin de la base SQLite |
+| `db` | `data/stashbin.sqlite` | Où sont stockés les secrets : un chemin pour SQLite, un tableau pour un serveur de base de données (voir plus bas) |
 | `auth` | `true` | Authentification exigée pour créer et supprimer |
 | `max_size` | 2 Mio | Taille maximale du payload chiffré |
 | `expirations` / `default_expiration` | 1 h → jamais, `1w` | Durées de vie proposées, à côté de la date et l'heure que le créateur peut choisir |
@@ -198,7 +201,36 @@ Tout se passe dans `config.php`, qui ne contient que des valeurs littérales : �
 | `default_locale` | `en` | Langue servie quand celle du navigateur n'est pas traduite |
 | `session_name` | `stashbin` | Nom du cookie de session |
 
-Trois d'entre eux acceptent en plus une variable d'environnement, indispensable en conteneur où le fichier est monté en lecture seule : `STASHBIN_DB` pour le chemin de la base, `STASHBIN_AUTH` pour l'authentification, `STASHBIN_LOCALE` pour la langue de repli. La variable l'emporte sur le fichier quand elle est définie et non vide ; absente, elle ne change rien.
+Certains acceptent en plus une variable d'environnement, indispensable en conteneur où le fichier est monté en lecture seule : `STASHBIN_DB` pour le chemin de la base, `STASHBIN_AUTH` pour l'authentification, `STASHBIN_TRUST_PROXY` pour le proxy, `STASHBIN_LOCALE` pour la langue de repli, et `STASHBIN_DB_DRIVER`, `_HOST`, `_PORT`, `_NAME`, `_USER`, `_PASS`, `_SOCKET`, `_CHARSET` pour les paramètres de connexion ci-dessous. La variable l'emporte sur le fichier quand elle est définie et non vide ; absente, elle ne change rien.
+
+### Base de données
+
+SQLite est le choix par défaut et ne demande rien : un fichier, un répertoire où PHP peut écrire, et le schéma est créé à la première utilisation.
+
+Pour stocker les secrets dans **MariaDB** (ou MySQL), donnez à `db` un tableau plutôt qu'un chemin :
+
+```php
+'db' => [
+    'driver' => 'mariadb',     // un nom de fichier de src/db/ : « sqlite », ou « mysql », que « mariadb » désigne aussi
+    'host'   => '127.0.0.1',   // ou 'socket' => '/run/mysqld/mysqld.sock'
+    'port'   => 3306,
+    'name'   => 'stashbin',
+    'user'   => 'stashbin',
+    'pass'   => '…',
+],
+```
+
+Créez au préalable la base et un compte autorisé à y écrire : StashBin crée ses tables, jamais une base de données, ce qui demande un privilège qu'une application n'a pas à détenir.
+
+```sql
+CREATE DATABASE stashbin CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+CREATE USER 'stashbin'@'localhost' IDENTIFIED BY '…';
+GRANT ALL PRIVILEGES ON stashbin.* TO 'stashbin'@'localhost';
+```
+
+La collation binaire n'est pas un détail : les identifiants sont sensibles à la casse, et sous une collation qui l'ignore deux secrets distincts cesseraient de se distinguer. StashBin crée ses tables ainsi quelle que soit la valeur par défaut de la base, et le réglage ci-dessus évite la question.
+
+Rien d'autre ne change : le payload reste opaque au serveur, la clé ne quitte toujours pas le navigateur, et les mêmes suites de test sont jouées contre les deux moteurs.
 
 ### Langue de l'interface
 
@@ -268,9 +300,10 @@ tests/              jeu de test complet (voir son README)
 ├── browser.test.mjs   cryptographie et parcours, dans Chromium
 └── lib.php         assertions et client HTTP, sans dépendance
 src/bootstrap.php   base de données, sessions, CSRF, langue, helpers
+src/db/             un fichier par moteur offert (sqlite.php, mysql.php)
 src/lang/           un fichier par langue offerte (fr.php fait référence)
 bin/user.php        gestion des comptes en CLI
-data/               base SQLite (créée automatiquement)
+data/               base SQLite (créée automatiquement ; inutilisée sur serveur)
 └── .htaccess       « Require all denied » : garde-fou si le document root
                     est mal configuré et pointe sur la racine du projet
 ```

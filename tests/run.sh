@@ -4,6 +4,7 @@
 #   ./tests/run.sh                    everything, on the reference version
 #   ./tests/run.sh --version 8.6      on another PHP version
 #   ./tests/run.sh --server nginx     behind nginx rather than Apache
+#   ./tests/run.sh --db mariadb       against MariaDB rather than SQLite
 #   ./tests/run.sh --no-browser       without the browser tests (faster)
 #   ./tests/run.sh --matrix           PHP suites on all eight combinations
 #   ./tests/run.sh --keep             leaves the instance alive for inspection
@@ -16,13 +17,24 @@ CTX="$REPO/containers"
 
 VERSIONS=(8.3 8.4 8.5 8.6)
 SERVERS=(apache nginx)
+DATABASES=(sqlite mariadb)
 REF_VERSION=8.4
 REF_SERVER=apache
+REF_DB=sqlite
 
 NET=stashbin-tests-net
 APP=stashbin-tests-app
 VOL=stashbin-tests-data
 BROWSER_IMAGE=stashbin-tests-browser
+
+# The database server, when the suites are not run against SQLite. Its
+# credentials are those of a container that lives for the length of one run.
+DB=stashbin-tests-db
+DB_IMAGE=docker.io/library/mariadb:11
+DB_SCHEMA=stashbin
+DB_USER=stashbin
+DB_PASS=stashbin
+DB_ROOT=rootpassword
 
 USER_NAME=tester
 USER_PASS=testpassword
@@ -36,6 +48,7 @@ keep=0
 teardown() {
     (( keep )) && { info "Instance left alive: podman exec -it $APP bash"; return; }
     podman rm -f "$APP" >/dev/null 2>&1
+    podman rm -f "$DB" >/dev/null 2>&1
     podman volume rm -f "$VOL" >/dev/null 2>&1
     podman network rm -f "$NET" >/dev/null 2>&1
 }
@@ -48,6 +61,7 @@ usage() { awk '/^#!/ {next} /^#/ {sub(/^# ?/, ""); print; next} {exit}' "$0"; }
 
 version=$REF_VERSION
 server=$REF_SERVER
+database=$REF_DB
 browser=1
 matrix=0
 
@@ -55,6 +69,7 @@ while (( $# )); do
     case $1 in
         --version) version=${2:?missing version}; shift 2 ;;
         --server)  server=${2:?missing server}; shift 2 ;;
+        --db)      database=${2:?missing database}; shift 2 ;;
         --no-browser) browser=0; shift ;;
         --matrix)  matrix=1; shift ;;
         --keep)    keep=1; shift ;;
@@ -66,11 +81,58 @@ done
 contains() { local n=$1; shift; for x in "$@"; do [[ $x == "$n" ]] && return 0; done; return 1; }
 contains "$version" "${VERSIONS[@]}" || die "Unknown version: \"$version\". Expected: ${VERSIONS[*]}"
 contains "$server" "${SERVERS[@]}"   || die "Unknown server: \"$server\". Expected: ${SERVERS[*]}"
+contains "$database" "${DATABASES[@]}" || die "Unknown database: \"$database\". Expected: ${DATABASES[*]}"
+
+# Told to the application through the environment, config.php being mounted
+# read-only. Empty for SQLite, which needs nothing said.
+db_env=()
+if [[ $database == mariadb ]]; then
+    db_env=(
+        -e "STASHBIN_DB_DRIVER=mariadb"
+        -e "STASHBIN_DB_HOST=$DB"
+        -e "STASHBIN_DB_NAME=$DB_SCHEMA"
+        -e "STASHBIN_DB_USER=$DB_USER"
+        -e "STASHBIN_DB_PASS=$DB_PASS"
+    )
+fi
 
 php_tag() {
     local v=$1 s=$2 base
     [[ $v == 8.6 ]] && base=8.6-rc || base=$v
     [[ $s == apache ]] && echo "${base}-apache" || echo "${base}-fpm"
+}
+
+# Starts the database server, once per run, and waits until it answers. The
+# tables are never created here: making them on an empty database is exactly
+# what the application is expected to do on its own.
+start_db() {
+    podman ps --format '{{.Names}}' | grep -qx "$DB" && return 0
+    podman rm -f "$DB" >/dev/null 2>&1
+    podman run -d --name "$DB" --network "$NET" \
+        -e "MARIADB_ROOT_PASSWORD=$DB_ROOT" \
+        -e "MARIADB_DATABASE=$DB_SCHEMA" \
+        -e "MARIADB_USER=$DB_USER" \
+        -e "MARIADB_PASSWORD=$DB_PASS" \
+        "$DB_IMAGE" >/dev/null || die "Could not start $DB_IMAGE."
+
+    local i
+    for i in $(seq 90); do
+        podman exec "$DB" mariadb -u root -p"$DB_ROOT" -e 'SELECT 1' >/dev/null 2>&1 && return 0
+        sleep 1
+    done
+    podman logs --tail 20 "$DB" >&2
+    die "The database is not answering."
+}
+
+# Hands the next suite an empty database, as wiping the volume does for SQLite.
+# Dropping the database takes the tables with it: what the application creates
+# on the way back up is what the tests then read.
+reset_db() {
+    podman exec "$DB" mariadb -u root -p"$DB_ROOT" -e "
+        DROP DATABASE IF EXISTS \`$DB_SCHEMA\`;
+        CREATE DATABASE \`$DB_SCHEMA\` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+        GRANT ALL PRIVILEGES ON \`$DB_SCHEMA\`.* TO '$DB_USER'@'%';" >/dev/null 2>&1 \
+        || die "Could not empty the database."
 }
 
 # Starts a fresh instance and waits until it really answers.
@@ -88,7 +150,12 @@ start_app() {
     podman volume rm -f "$VOL" >/dev/null 2>&1
     podman network exists "$NET" >/dev/null 2>&1 || podman network create "$NET" >/dev/null
 
-    podman run -d --name "$APP" --network "$NET" "$@" \
+    if [[ $database == mariadb ]]; then
+        start_db
+        reset_db
+    fi
+
+    podman run -d --name "$APP" --network "$NET" ${db_env[@]+"${db_env[@]}"} "$@" \
         -v "$REPO:/var/www/stashbin:ro,z" \
         -v "$VOL:/var/lib/stashbin:z" \
         "$image" >/dev/null || die "Could not start the container."
@@ -173,7 +240,7 @@ record() {
 info "${BOLD}Jeu de test StashBin${OFF}"
 
 if (( matrix )); then
-    info "PHP suites on all eight combinations, browser tests on $REF_VERSION/$REF_SERVER."
+    info "PHP suites on all eight combinations ($database), browser tests on $REF_VERSION/$REF_SERVER."
     for v in "${VERSIONS[@]}"; do
         for s in "${SERVERS[@]}"; do
             info ""
@@ -189,7 +256,7 @@ if (( matrix )); then
         if run_browser_suite; then record "browser" OK; else record "browser" FAILED; fi
     fi
 else
-    info "PHP $version / $server$( (( browser )) || echo ' — without the browser tests')"
+    info "PHP $version / $server / $database$( (( browser )) || echo ' — without the browser tests')"
     run_php_suites "$version" "$server"
     if (( browser )); then
         # The "noauth" suite left an open instance behind: the browser, for its

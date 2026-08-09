@@ -15,6 +15,55 @@ $http = new Http($base);
 $token = $http->login($user, $pass);
 
 // ---------------------------------------------------------------------------
+group('Storage — whichever engine the instance runs on');
+
+// This suite is played against SQLite and against MariaDB, and the tests below
+// are the ones that say which of the two answered: everything after them is
+// written once and has to hold on both.
+test('the configured engine is the one being talked to', function () {
+    $configured = db_driver_file(db_settings(config()['db'])['driver']);
+    assert_eq($configured, db()->getAttribute(PDO::ATTR_DRIVER_NAME), 'PDO driver in use');
+});
+
+test('the schema is created on first use', function () {
+    // Portable on purpose: a query that fails on a missing table or a missing
+    // column says more here than any engine's own catalogue would.
+    foreach (['users', 'pastes', 'paste_reads'] as $table) {
+        assert_true(
+            (int) db()->query("SELECT COUNT(*) FROM $table")->fetchColumn() >= 0,
+            "\"$table\" table present"
+        );
+    }
+    assert_eq(9, db()->query('SELECT id, payload, burn, delete_hash, created, expires, owner_id,
+                                     gone, gone_cause FROM pastes LIMIT 1')->columnCount(),
+        'every column of a secret');
+    assert_eq(6, db()->query('SELECT id, paste_id, at, outcome, ip, agent
+                                FROM paste_reads LIMIT 1')->columnCount(),
+        'every column of an access');
+});
+
+test('a secret comes back with the types the code compares without casting', function () use ($http, $token) {
+    $id = $http->createSecret(['expire' => '1h'], $token)->json()['id'];
+    $stmt = db()->prepare('SELECT created, expires, burn FROM pastes WHERE id = ?');
+    $stmt->execute([$id]);
+    $row = $stmt->fetch();
+    assert_true(is_int($row['created']), 'created is an integer');
+    assert_true(is_int($row['expires']), 'expires is an integer, which api.php compares to time()');
+});
+
+test('two identifiers differing only in case are two different secrets', function () {
+    // A case-insensitive collation would serve one reader another's ciphertext:
+    // identifiers are base64url, where "aB" and "Ab" have nothing to do with
+    // each other.
+    db()->prepare('INSERT INTO pastes (id, payload, burn, delete_hash, created, expires) VALUES (?,?,?,?,?,?)')
+        ->execute(['CaseSensitive0', '{"ct":"UPPER"}', 0, 'h', time(), null]);
+    $stmt = db()->prepare('SELECT payload FROM pastes WHERE id = ?');
+    $stmt->execute(['casesensitive0']);
+    assert_eq(false, $stmt->fetchColumn(), 'the lowercase identifier matches nothing');
+    db()->prepare('DELETE FROM pastes WHERE id = ?')->execute(['CaseSensitive0']);
+});
+
+// ---------------------------------------------------------------------------
 group('Creation — authentication and CSRF');
 
 test('an anonymous visitor cannot create a secret (401)', function () use ($base) {

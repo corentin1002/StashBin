@@ -83,17 +83,19 @@ $stmt = db()->prepare(
     //
     // Whether a password guards the secret is already in that payload, in the
     // clear — the reader has to be told before being asked for one — so the
-    // flag is lifted out in SQL instead of becoming a column of its own. A
-    // secret at rest has no payload left, and no badge either — hence the
-    // json_valid guard: json_extract raises on the empty string a headstone
-    // carries, and would take the whole page down with it.
-    "SELECT p.id, p.burn, p.created, p.expires, p.gone, p.gone_cause,
-            CASE WHEN json_valid(p.payload) THEN json_extract(p.payload, '$.pwd') END AS pwd,
-            COUNT(r.id) AS reads
+    // flag is lifted out in SQL instead of becoming a column of its own. Every
+    // engine reads a JSON boolean its own way, and a secret at rest has no
+    // payload left to read at all, so that expression comes from the driver.
+    //
+    // "read_count" rather than the "reads" this once was: MariaDB reserves that
+    // word, and a query is not worth quoting identifiers over.
+    'SELECT p.id, p.burn, p.created, p.expires, p.gone, p.gone_cause,
+            ' . sql('json_bool', 'p.payload', '$.pwd') . ' AS pwd,
+            COUNT(r.id) AS read_count
        FROM pastes p LEFT JOIN paste_reads r ON r.paste_id = p.id AND r.outcome = ?
       WHERE p.owner_id = ?
       GROUP BY p.id
-      ORDER BY p.created DESC, p.rowid DESC"
+      ORDER BY p.created DESC, p.' . sql('sequence') . ' DESC'
 );
 $stmt->execute(['served', $user['id']]);
 $secrets = $stmt->fetchAll();
@@ -101,9 +103,14 @@ $secrets = $stmt->fetchAll();
 // Bounded like the writing side, and for databases written before it was:
 // an entry flooded by a stranger must not turn its owner's page into a
 // thousand rows of their user agent.
+//
+// The cap is bound as a number rather than passed to execute(), which hands
+// every parameter over as text: quoted, a LIMIT is a syntax error on MySQL
+// the moment the statement is prepared by PDO rather than by the server.
 $logs = db()->prepare(
     'SELECT at, outcome, ip, agent FROM paste_reads WHERE paste_id = ? ORDER BY at DESC LIMIT ?'
 );
+$logs->bindValue(2, (int) config()['access_log_max'], PDO::PARAM_INT);
 
 // Entries whose secret is gone — expired, deleted or read once. They pile up on
 // their own as secrets expire, hence the sweep.
@@ -150,7 +157,7 @@ $csrf = csrf_token();
 
   <?php foreach ($secrets as $secret): ?>
   <?php
-    $reads = (int) $secret['reads'];
+    $reads = (int) $secret['read_count'];
     if ($secret['gone'] !== null) {
         $state = t('secrets.state_' . ($secret['gone_cause'] ?? 'deleted'));
     } elseif ($reads === 0) {
@@ -160,7 +167,8 @@ $csrf = csrf_token();
     } else {
         $state = t('secrets.state_read_many', ['count' => $reads]);
     }
-    $logs->execute([$secret['id'], config()['access_log_max']]);
+    $logs->bindValue(1, $secret['id']);
+    $logs->execute();
     $accesses = $logs->fetchAll();
   ?>
   <article class="secret<?= $secret['gone'] !== null ? ' gone' : '' ?>">

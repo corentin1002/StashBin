@@ -6,8 +6,17 @@ require __DIR__ . '/lib.php';
 
 // Isolated database: config() memoises on its first call, so the variable must
 // be set before bootstrap.php is loaded.
+//
+// A file of its own, whatever the instance under test runs on: what follows
+// reads the schema through PRAGMA, so the connection details an instance may
+// have been started with are dropped here. The engine-independent half of that
+// work is checked further down, and the suites that go through HTTP are the
+// ones running against the configured engine.
 $dbPath = sys_get_temp_dir() . '/stashbin-unit-' . getmypid() . '.sqlite';
 putenv("STASHBIN_DB=$dbPath");
+foreach (['DRIVER', 'HOST', 'PORT', 'NAME', 'USER', 'PASS', 'SOCKET', 'CHARSET'] as $detail) {
+    putenv("STASHBIN_DB_$detail");
+}
 register_shutdown_function(static function () use ($dbPath) {
     foreach ([$dbPath, "$dbPath-wal", "$dbPath-shm"] as $f) {
         @unlink($f);
@@ -163,6 +172,106 @@ test('STASHBIN_DB replaces the database path', function () use ($base) {
         assert_eq('/ailleurs/base.sqlite', env_overrides($base)['db'], 'path overridden');
     } finally {
         putenv(is_string($saved) ? "STASHBIN_DB=$saved" : 'STASHBIN_DB');
+    }
+});
+
+// ---------------------------------------------------------------------------
+group('Choosing an engine — db_settings() / load_db_driver()');
+
+// The setting used to be a path and nothing else. It still may be: an instance
+// happy with SQLite must never have to learn the array form.
+test('a bare path means SQLite and that file', function () {
+    $db = db_settings('/var/lib/stashbin/base.sqlite');
+    assert_eq('sqlite', $db['driver'], 'SQLite unless told otherwise');
+    assert_eq('/var/lib/stashbin/base.sqlite', $db['path'], 'the path is kept');
+});
+
+test('an array says which engine, and keeps the connection details', function () {
+    $db = db_settings(['driver' => 'MariaDB', 'host' => 'db.internal', 'name' => 'stashbin']);
+    assert_eq('mariadb', $db['driver'], 'the name is compared in lower case');
+    assert_eq('db.internal', $db['host'], 'host kept');
+    assert_eq('stashbin', $db['name'], 'database name kept');
+});
+
+test('an array without a driver is SQLite too', function () {
+    assert_eq('sqlite', db_settings(['path' => '/tmp/x.sqlite'])['driver'], 'the default holds');
+});
+
+test('normalising twice changes nothing', function () {
+    // db_settings() is applied wherever the setting is read, and env_overrides()
+    // applies it again on top of what config.php holds.
+    $once = db_settings('/tmp/x.sqlite');
+    assert_eq($once, db_settings($once), 'stable');
+});
+
+test('every file in src/db/ is an engine on offer', function () {
+    $drivers = available_db_drivers();
+    assert_true(in_array('sqlite', $drivers, true), 'SQLite present');
+    assert_true(in_array('mysql', $drivers, true), 'MySQL present');
+});
+
+test('"mariadb" and "mysql" lead to the same driver', function () {
+    // One protocol, one PDO driver, one dialect: two files would drift apart.
+    assert_eq('mysql', db_driver_file('mariadb'), 'MariaDB is served by the MySQL driver');
+    assert_eq(
+        load_db_driver('mysql')['sequence'],
+        load_db_driver('mariadb')['sequence'],
+        'the same file either way'
+    );
+});
+
+test('an unknown engine stops everything rather than starting without storage', function () {
+    assert_throws(fn () => load_db_driver('postgres'), 'an engine with no file is refused');
+    // The name becomes a file path: a traversal must not find its way there.
+    assert_throws(fn () => load_db_driver('../config'), 'a path is not an engine name');
+});
+
+test('each driver offers what the queries ask of it', function () {
+    foreach (available_db_drivers() as $name) {
+        $driver = load_db_driver($name);
+        foreach (['connect', 'migrate', 'json_bool', 'integer', 'sequence'] as $key) {
+            assert_true(array_key_exists($key, $driver), "$name: \"$key\"");
+        }
+        assert_true(is_callable($driver['json_bool']), "$name: json_bool is built from a column");
+        assert_true($driver['sequence'] !== '', "$name: an insertion order to break a date tie");
+    }
+});
+
+test('the SQL fragments name the column they are given', function () {
+    // They are interpolated into a query, not bound to it: what they are handed
+    // has to come out whole, and nothing else has any business reaching them.
+    assert_contains('p.payload', sql('json_bool', 'p.payload', '$.pwd'), 'the column is used');
+    assert_contains('$.pwd', sql('json_bool', 'p.payload', '$.pwd'), 'and the JSON path too');
+    assert_contains('?', sql('integer', '?'), 'the placeholder survives the cast');
+    assert_eq('rowid', sql('sequence'), 'SQLite orders by rowid');
+});
+
+test('the connection details travel through the environment', function () {
+    // config.php is mounted read-only in a container: without these variables
+    // there would be no way to point an instance at a database server.
+    $file = ['db' => '/data/stashbin.sqlite'];
+    try {
+        putenv('STASHBIN_DB_DRIVER=mariadb');
+        putenv('STASHBIN_DB_HOST=db.internal');
+        putenv('STASHBIN_DB_PORT=3307');
+        putenv('STASHBIN_DB_NAME=secrets');
+        putenv('STASHBIN_DB_USER=stashbin');
+        putenv('STASHBIN_DB_PASS=hunter2');
+        $db = env_overrides($file)['db'];
+        assert_eq('mariadb', $db['driver'], 'engine named by the environment');
+        assert_eq('db.internal', $db['host'], 'host');
+        assert_eq('3307', $db['port'], 'port');
+        assert_eq('secrets', $db['name'], 'database name');
+        assert_eq('stashbin', $db['user'], 'account');
+        assert_eq('hunter2', $db['pass'], 'password');
+        // A container image sets STASHBIN_DB whatever the engine: the path is
+        // still taken, and simply means nothing to an engine that reads no
+        // file. What it must never do is drag the instance back onto SQLite.
+        assert_eq(getenv('STASHBIN_DB'), $db['path'], 'the path is kept, and left unused');
+    } finally {
+        foreach (['DRIVER', 'HOST', 'PORT', 'NAME', 'USER', 'PASS'] as $detail) {
+            putenv("STASHBIN_DB_$detail");
+        }
     }
 });
 

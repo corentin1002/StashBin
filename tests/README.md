@@ -15,23 +15,26 @@ The runner builds the image, starts a fresh instance, creates a test account, pl
 | *(none)* | Everything, on PHP 8.4 + Apache |
 | `--version 8.6` | On another PHP version (8.3, 8.4, 8.5, 8.6) |
 | `--server nginx` | Behind nginx + PHP-FPM rather than Apache |
+| `--db mariadb` | Against a MariaDB server started beside the instance, rather than SQLite |
 | `--no-browser` | Without the browser tests — faster, but leaves the cryptography without a net |
 | `--matrix` | PHP suites on all eight version × server combinations |
 | `--keep` | Leaves the instance alive for inspection afterwards |
 
 ## What is covered
 
-**263 tests** across five suites.
+**278 tests** across five suites, played against SQLite and against MariaDB.
 
 | Suite | Tests | Scope |
 |---|--:|---|
-| `unit.test.php` | 81 | Functions in `src/bootstrap.php` without going through HTTP: escaping, configuration and environment overrides, database schema and its migration, purging expired secrets, CSRF tokens, dates in UTC and the markup that lets a browser localise them, the expiry instants a creator may choose, language negotiation and dictionaries |
-| `api.test.php` | 60 | Business rules over HTTP: authentication, CSRF, payload validation, lifetimes preset and chosen, burn after reading and the single reader it is promised to, deletion links, ownership, the access log and the headstones left behind, refused methods, error codes and the language of the response |
-| `security.test.php` | 38 | The guarantees the README makes: nothing outside `public/`, hardening headers, session and fixation, hashed storage, nothing kept in a cache, one creator's inventory kept out of another's reach, sweeps that spare live secrets, injection, and the fact that choosing a language opens nothing |
+| `unit.test.php` | 91 | Functions in `src/bootstrap.php` without going through HTTP: escaping, configuration and environment overrides, the choice of a database engine, the schema and its migration, purging expired secrets, CSRF tokens, dates in UTC and the markup that lets a browser localise them, the expiry instants a creator may choose, language negotiation and dictionaries |
+| `api.test.php` | 64 | Business rules over HTTP: authentication, CSRF, payload validation, lifetimes preset and chosen, burn after reading and the single reader it is promised to, deletion links, ownership, the access log and the headstones left behind, refused methods, error codes and the language of the response |
+| `security.test.php` | 39 | The guarantees the README makes: nothing outside `public/`, hardening headers, session and fixation, hashed storage, nothing kept in a cache, one creator's inventory kept out of another's reach, sweeps that spare live secrets, injection, and the fact that choosing a language opens nothing |
 | `noauth.test.php` | 22 | Open instance (`auth` set to false): creation without an account, CSRF still required, deletion by the token alone, no inventory, no owner and nothing recorded about readers, and everything that does not move |
 | `browser.test.mjs` | 62 | Real Chromium: end-to-end cryptography, complete interface journeys, the creator's inventory as they see it, its badges and its dates in the reader's own timezone, an expiry picked by hand, the interface served in the browser's language, the layout on a phone-sized screen, and what a visitor without JavaScript is told |
 
 The PHP tests run **inside the application container**, under the `www-data` identity. They can therefore compare the HTTP response with what is actually written to the database — that is how we check that a deletion token really is stored hashed, or that a payload is never decrypted server-side.
+
+`--db mariadb` starts a MariaDB server on the test network and points the instance at it; each suite gets an empty database, as each gets an empty volume otherwise. The suites reached through HTTP then read the engine the instance really runs on, so their SQL is written to be understood by both — that is where the differences between engines show up, and every one of them found so far was found this way. `unit.test.php` is the exception: it drops those variables and keeps a SQLite file of its own, because half of what it asserts is read through `PRAGMA`. What is engine-independent in it — the shape of the `db` setting, the driver files in `src/db/`, the SQL fragments they hand out — is checked without any database at all.
 
 `noauth.test.php` needs a server started with `STASHBIN_AUTH=0`: the setting is read at startup, there is no hot switch. The runner therefore replaces the instance for the duration of that suite, then starts an ordinary one again for the browser tests. In `--matrix` mode the suite is replayed on all eight combinations: the environment-variable override goes through mod_php on one side and PHP-FPM on the other, which is not the same path.
 
