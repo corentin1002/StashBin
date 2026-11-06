@@ -1,17 +1,17 @@
-# Harnais des tests navigateur.
+# Browser test harness.
 #
-# L'image officielle Playwright fournit les navigateurs (via
-# PLAYWRIGHT_BROWSERS_PATH) mais pas le paquet npm qui pilote. On l'installe
-# here once and for all: without it, every run would pay for an "npm install"
+# The official Playwright image provides the browsers (through
+# PLAYWRIGHT_BROWSERS_PATH) but not the npm package that drives them. It is
+# installed here once and for all: without it, every run would pay for an "npm install"
 # and depend on the network.
 #
 # The package version must match the browsers shipped in the base image, hence
 # the two linked arguments.
 
-ARG PLAYWRIGHT_TAG=v1.50.0-noble
+ARG PLAYWRIGHT_TAG=v1.65.0-noble
 FROM mcr.microsoft.com/playwright:${PLAYWRIGHT_TAG}
 
-ARG PLAYWRIGHT_VERSION=1.50.0
+ARG PLAYWRIGHT_VERSION=1.65.0
 
 # ES modules ignore NODE_PATH: resolution walks up the tree looking for a
 # node_modules. The test script is therefore copied into this directory at run

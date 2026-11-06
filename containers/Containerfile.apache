@@ -19,9 +19,9 @@ RUN docker-php-ext-install -j"$(nproc)" pdo_mysql > /dev/null
 RUN sed -i 's#/var/www/html#/var/www/stashbin/public#g' \
         /etc/apache2/sites-available/000-default.conf
 
-# AllowOverride None : Apache ne cherche aucun .htaccess. Sans cela, un montage
-# en lecture seule peut lui faire renvoyer « unable to read htaccess file,
-# denying access to be safe » — un 403 sur toutes les pages.
+# AllowOverride None: Apache looks for no .htaccess. Without it, a read-only
+# mount can make it answer "unable to read htaccess file, denying access to be
+# safe" — a 403 on every page.
 RUN printf '%s\n' \
         '<Directory /var/www/stashbin/public>' \
         '    AllowOverride None' \
